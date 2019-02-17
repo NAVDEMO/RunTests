@@ -1,0 +1,12 @@
+{
+  "id": "0b5bd6f2-42ce-401d-a10c-a40d07750aa6",
+  "name": "RunTests",
+  "publisher": "Default Publisher",
+  "version": "1.0.0.0",
+  "brief": "RunTests",
+  "description": "RunTests",
+  "platform": "13.0.0.0",
+  "application": "13.0.0.0",
+  "runtime":"2.0",
+  "idRange": {"from": 50000,"to": 50009}
+}
