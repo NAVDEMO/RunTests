@@ -81,7 +81,7 @@ function Remove-ClientSession
     $events | % { Unregister-Event $_.Name }
     $events = @()
 
-    if ($clientSession.State -ne ([ClientSessionState]::Closed)) {
+    if ($clientSession -and ($clientSession.State -ne ([ClientSessionState]::Closed))) {
         $clientSession.CloseSessionAsync()
         Await-State -ClientSession $clientSession -State Closed
     }
@@ -324,8 +324,9 @@ Add-type -Path (Join-Path $PSScriptRoot "Test Assemblies\NewtonSoft.json.dll")
 $serviceUrl = "http://fkdev/NAV/cs"
 $credential = New-Object pscredential 'admin', (ConvertTo-SecureString -String 'P@ssword1' -AsPlainText -Force)
 
-$clientSession = New-ClientSessionUserNamePasswordAuthentication -serviceUrl $serviceUrl -credential $credential -InteractionTimeout ([timespan]::FromMinutes(60))
-
-Run-Tests -clientSession $clientSession -testSuite "DEFAULT" -verbose
-
-Remove-ClientSession -clientSession $clientSession
+try {
+    $clientSession = New-ClientSessionUserNamePasswordAuthentication -serviceUrl $serviceUrl -credential $credential -InteractionTimeout ([timespan]::FromMinutes(60))
+    Run-Tests -clientSession $clientSession -testSuite "DEFAULT"
+} finally {
+    Remove-ClientSession -clientSession $clientSession
+}
