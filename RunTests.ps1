@@ -3,30 +3,43 @@ using namespace Microsoft.Dynamics.Framework.UI.Client
 using namespace Microsoft.Dynamics.Framework.UI.Client.Interactions
 
 $ErrorActionPreference = "Stop"
+$events = @()
 
 function New-ClientSessionUserNamePasswordAuthentication
 {
     [OutputType([ClientSession])]
     Param(
         [string] $serviceUrl,
-        [pscredential] $credential
+        [pscredential] $credential,
+        [timespan] $interactionTimeout = ([timespan]::FromMinutes(10)),
+        [string] $culture = "en-US"
     )
     $addressUri = New-Object System.Uri -ArgumentList $serviceUrl
     $addressUri = [ServiceAddressProvider]::ServiceAddress($addressUri)
     $jsonClient = New-Object JsonHttpClient -ArgumentList $addressUri, (New-Object System.Net.NetworkCredential -ArgumentList $credential.UserName, $credential.Password), ([AuthenticationScheme]::UserNamePassword)
-    New-Object ClientSession -ArgumentList $jsonClient, (New-Object NonDispatcher), (New-Object 'TimerFactory[TaskTimer]')
+    $httpClient = ($jsonClient.GetType().GetField("httpClient", [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Instance)).GetValue($jsonClient)
+    $httpClient.Timeout = $interactionTimeout
+    $clientSession = New-Object ClientSession -ArgumentList $jsonClient, (New-Object NonDispatcher), (New-Object 'TimerFactory[TaskTimer]')
+    Open-ClientSession -clientSession $clientSession -culture $culture
+    $clientSession
 }
 
 function New-ClientSessionWindowsAuthentication
 {
     [OutputType([ClientSession])]
     Param(
-        [string] $serviceUrl
+        [string] $serviceUrl,
+        [timespan] $interactionTimeout = ([timespan]::FromMinutes(10)),
+        [string] $culture = "en-US"
     )
     $addressUri = New-Object System.Uri -ArgumentList $serviceUrl
     $addressUri = [ServiceAddressProvider]::ServiceAddress($addressUri)
     $jsonClient = New-Object JsonHttpClient -ArgumentList $addressUri, $null, ([AuthenticationScheme]::UserNamePassword)
-    New-Object ClientSession -ArgumentList $jsonClient, (New-Object NonDispatcher), (New-Object 'TimerFactory[TaskTimer]')
+    $httpClient = ($jsonClient.GetType().GetField("httpClient", [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Instance)).GetValue($jsonClient)
+    $httpClient.Timeout = $interactionTimeout
+    $clientSession = New-Object ClientSession -ArgumentList $jsonClient, (New-Object NonDispatcher), (New-Object 'TimerFactory[TaskTimer]')
+    Open-ClientSession -clientSession $clientSession -culture $culture
+    $clientSession
 }
 
 function Open-ClientSession
@@ -35,11 +48,28 @@ function Open-ClientSession
         [ClientSession] $clientSession,
         [string] $culture
     )
-    $clientSessioParameters = New-Object ClientSessionParameters
-    $clientSessioParameters.CultureId = $culture
-    $clientSessioParameters.UICultureId = $culture
-    $clientSessioParameters.AdditionalSettings.Add("IncludeControlIdentifier", $true)
-    $clientSession.OpenSessionAsync($clientSessioParameters)
+    $clientSessionParameters = New-Object ClientSessionParameters
+    $clientSessionParameters.CultureId = $culture
+    $clientSessionParameters.UICultureId = $culture
+    $clientSessionParameters.AdditionalSettings.Add("IncludeControlIdentifier", $true)
+
+    $events += @(Register-ObjectEvent -InputObject $clientSession -EventName MessageToShow -Action {
+        Write-Host -ForegroundColor Yellow "Message : $($EventArgs.Message)"
+    })
+    $events += @(Register-ObjectEvent -InputObject $clientSession -EventName CommunicationError -Action {
+        Write-Host -ForegroundColor Yellow "CommunicationError : $($EventArgs.Exception.Message)"
+    })
+    $events += @(Register-ObjectEvent -InputObject $clientSession -EventName UnhandledException -Action {
+        Write-Host -ForegroundColor Yellow "UnhandledException : $($EventArgs.Exception.Message)"
+    })
+    $events += @(Register-ObjectEvent -InputObject $clientSession -EventName InvalidCredentialsError -Action {
+        Write-Host -ForegroundColor Yellow "InvalidCredentialsError"
+    })
+    $events += @(Register-ObjectEvent -InputObject $clientSession -EventName UriToShow -Action {
+        Write-Host -ForegroundColor Yellow "UriToShow : $($EventArgs.UriToShow)"
+    })
+
+    $clientSession.OpenSessionAsync($clientSessionParameters)
     Await-state -ClientSession $clientSession -state Ready
 }
 
@@ -48,6 +78,9 @@ function Remove-ClientSession
     Param(
         [ClientSession] $clientSession
     )
+    $events | % { Unregister-Event $_.Name }
+    $events = @()
+
     if ($clientSession.State -ne ([ClientSessionState]::Closed)) {
         $clientSession.CloseSessionAsync()
         Await-State -ClientSession $clientSession -State Closed
@@ -68,7 +101,40 @@ function Await-State
         if ($clientSession.State -eq [ClientSessionState]::TimedOut) {
             throw "ClientSession timed out"
         }
+        if ($clientSession.State -eq [ClientSessionState]::Uninitialized) {
+            throw "ClientSession is Uninitialized"
+        }
     }
+}
+
+function Invoke-Interaction
+{
+    Param(
+        [ClientSession] $clientSession,
+        [ClientInteraction] $interaction,
+        [ClientSessionState] $state = ([ClientSessionState]::Ready)
+    )
+    $clientSession.InvokeInteractionAsync($interaction)
+    Await-State -clientSession $clientSession -state $state
+}
+
+function Invoke-InteractionAndCatchForm
+{
+    Param(
+        [ClientSession] $clientSession,
+        [ClientInteraction] $interaction
+    )
+    $Global:caughtForm = $null
+    $event = Register-ObjectEvent -InputObject $clientSession -EventName FormToShow -Action {
+        $Global:caughtForm = $EventArgs.FormToShow
+    }
+    try {
+        Invoke-Interaction -clientSession $clientSession -interaction $interaction
+    } finally {
+        Unregister-Event -SourceIdentifier $event.Name
+    }
+    $Global:caughtForm
+    Remove-Variable caughtForm -Scope Global
 }
 
 function Open-Form
@@ -78,19 +144,9 @@ function Open-Form
         [ClientSession] $clientSession,
         [int] $page
     )
-    $Global:form = $null
-    $event = Register-ObjectEvent -InputObject $clientSession -EventName FormToShow -Action {
-        $Global:form = $EventArgs.FormToShow
-    }
-    try {
-        $interaction = New-Object OpenFormInteraction
-        $interaction.Page = $page
-        $clientSession.InvokeInteractionAsync($interaction)
-        Await-State -clientSession $clientSession -state Ready
-    } finally {
-        Unregister-Event -SourceIdentifier $event.Name
-    }
-    $Global:form
+    $interaction = New-Object OpenFormInteraction
+    $interaction.Page = $page
+    Invoke-InteractionAndCatchForm -clientSession $clientSession -interaction $interaction
 }
 
 function Close-Form
@@ -99,9 +155,7 @@ function Close-Form
         [ClientSession] $clientSession,
         [ClientLogicalControl] $form
     )
-    $interaction = New-Object CloseFormInteraction -ArgumentList $form
-    $clientSession.InvokeInteractionAsync($interaction)
-    Await-State -clientSession $clientSession -state Ready
+    Invoke-Interaction -clientSession $clientSession -interaction (New-Object CloseFormInteraction -ArgumentList $form)
 }
 
 function Close-AllForms
@@ -141,9 +195,7 @@ function Save-Value
         [ClientLogicalControl] $control,
         [string] $newValue
     )
-    $interaction = New-Object SaveValueInteraction -ArgumentList $control, $newValue
-    $clientSession.InvokeInteractionAsync($interaction)
-    Await-State -clientSession $clientSession -state Ready
+    Invoke-Interaction -clientSession $clientSession -interaction (New-Object SaveValueInteraction -ArgumentList $control, $newValue)
 }
 
 function Scroll-Repeater
@@ -153,9 +205,7 @@ function Scroll-Repeater
         [ClientRepeaterControl] $repeater,
         [int] $by
     )
-    $interaction = New-Object ScrollRepeaterInteraction -ArgumentList $repeater, $by
-    $clientSession.InvokeInteractionAsync($interaction)
-    Await-State -clientSession $clientSession -state Ready
+    Invoke-Interaction -clientSession $clientSession -interaction (New-Object ScrollRepeaterInteraction -ArgumentList $repeater, $by)
 }
 
 function Activate-Control
@@ -164,9 +214,7 @@ function Activate-Control
         [ClientSession] $clientSession,
         [ClientLogicalControl] $control
     )
-    $interaction = New-Object ActivateControlInteraction -ArgumentList $lineTypeControl
-    $clientSession.InvokeInteractionAsync($interaction)
-    Await-State -clientSession $clientSession -state Ready
+    Invoke-Interaction -clientSession $clientSession -interaction (New-Object ActivateControlInteraction -ArgumentList $lineTypeControl)
 }
 
 function Get-ActionByCaption
@@ -185,9 +233,7 @@ function Invoke-Action
         [ClientSession] $clientSession,
         [ClientActionControl] $action
     )
-    $interaction = New-Object InvokeActionInteraction -ArgumentList $action
-    $clientSession.InvokeInteractionAsync($interaction)
-    Await-State -clientSession $clientSession -state Ready
+    Invoke-Interaction -clientSession $clientSession -interaction (New-Object InvokeActionInteraction -ArgumentList $action)
 }
 
 function Run-Tests
@@ -198,9 +244,6 @@ function Run-Tests
         [string] $testSuite = "DEFAULT",
         [switch] $verbose
     )
-
-    Open-ClientSession -clientSession $clientSession -culture "en-US"
-    
     $form = Open-Form -clientSession $clientSession -page $testPage
     $suiteControl = Get-ControlByCaption -control $form -caption "Suite Name"
     Save-Value -clientSession $clientSession -control $suiteControl -newValue $testSuite
@@ -280,8 +323,9 @@ Add-type -Path (Join-Path $PSScriptRoot "Test Assemblies\NewtonSoft.json.dll")
 # Connect to Client Service
 $serviceUrl = "http://fkdev/NAV/cs"
 $credential = New-Object pscredential 'admin', (ConvertTo-SecureString -String 'P@ssword1' -AsPlainText -Force)
-$clientSession = New-ClientSessionUserNamePasswordAuthentication -serviceUrl $serviceUrl -credential $credential
 
-Run-Tests -clientSession $clientSession -verbose
+$clientSession = New-ClientSessionUserNamePasswordAuthentication -serviceUrl $serviceUrl -credential $credential -InteractionTimeout ([timespan]::FromMinutes(60))
+
+Run-Tests -clientSession $clientSession -testSuite "DEFAULT" -verbose
 
 Remove-ClientSession -clientSession $clientSession
