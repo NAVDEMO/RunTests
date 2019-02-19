@@ -1,0 +1,24 @@
+{
+  "captiontranslations": [
+    {
+      "culture": "en-US",
+      "captions": {
+        "run": "Selektierte ausführen",
+        "result": "Ergebnis",
+        "success": "Erfolg",
+        "codeunit": "Codeunit",
+        "function": "Funktion"
+      }
+    },
+    {
+      "culture": "de-DE",
+      "captions": {
+        "run": "Selektierte ausführen",
+        "result": "Ergebnis",
+        "success": "Erfolg",
+        "codeunit": "Codeunit",
+        "function": "Funktion"
+      }
+    }
+  ]
+}
