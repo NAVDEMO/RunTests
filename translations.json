@@ -3,11 +3,11 @@
     {
       "culture": "en-US",
       "captions": {
-        "run": "Selektierte ausführen",
-        "result": "Ergebnis",
-        "success": "Erfolg",
+        "run": "Run",
+        "result": "Result",
+        "success": "Success",
         "codeunit": "Codeunit",
-        "function": "Funktion"
+        "function": "Function"
       }
     },
     {
