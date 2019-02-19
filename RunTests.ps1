@@ -1,4 +1,4 @@
-﻿#requires -Version 5.0
+#requires -Version 5.0
 using namespace Microsoft.Dynamics.Framework.UI.Client
 using namespace Microsoft.Dynamics.Framework.UI.Client.Interactions
 
@@ -34,7 +34,7 @@ function New-ClientSessionWindowsAuthentication
     )
     $addressUri = New-Object System.Uri -ArgumentList $serviceUrl
     $addressUri = [ServiceAddressProvider]::ServiceAddress($addressUri)
-    $jsonClient = New-Object JsonHttpClient -ArgumentList $addressUri, $null, ([AuthenticationScheme]::UserNamePassword)
+    $jsonClient = New-Object JsonHttpClient -ArgumentList $addressUri, $null, ([AuthenticationScheme]::Windows)
     $httpClient = ($jsonClient.GetType().GetField("httpClient", [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Instance)).GetValue($jsonClient)
     $httpClient.Timeout = $interactionTimeout
     $clientSession = New-Object ClientSession -ArgumentList $jsonClient, (New-Object NonDispatcher), (New-Object 'TimerFactory[TaskTimer]')
@@ -242,6 +242,7 @@ function Run-Tests
         [ClientSession] $clientSession,
         [int] $testPage = 130401,
         [string] $testSuite = "DEFAULT",
+        [string] $culture = "en-US",
         [switch] $verbose
     )
     $form = Open-Form -clientSession $clientSession -page $testPage
@@ -249,6 +250,9 @@ function Run-Tests
     Save-Value -clientSession $clientSession -control $suiteControl -newValue $testSuite
     $repeater = Get-ControlByType -control $form -type ([ClientRepeaterControl])
     $index = 0
+
+    $allTranslations = Get-Content .\translations.json -Encoding UTF8 | ConvertFrom-Json
+    $translations = ($allTranslations.captiontranslations | Where-Object {$_.culture -eq $culture}).captions
     
     while ($true)
     {
@@ -268,17 +272,17 @@ function Run-Tests
         $name = (Get-ControlByCaption -control $row -caption "Name").StringValue
         $codeUnitId = (Get-ControlByCaption -control $row -caption "Codeunit ID").StringValue
     
-        if ($lineType -eq "Codeunit") 
+        if ($lineType -eq $translations.codeunit) 
         {
             Activate-Control -clientSession $clientSession -control $lineTypeControl
             Write-Host "  $lineType $codeunitId $name " -NoNewline
     
-            $runAction = Get-ActionByCaption -control $form -caption "Run Selected"
+            $runAction = Get-ActionByCaption -control $form -caption $translations.run
             Invoke-Action -clientSession $clientSession -action $runAction
     
             $row = $repeater.DefaultViewport[$rowIndex]
-            $result = (Get-ControlByCaption -control $row -caption "Result").StringValue
-            if ($result -eq "Success")
+            $result = (Get-ControlByCaption -control $row -caption $translations.result).StringValue
+            if ($result -eq $translations.success)
             {
                 $color = "Green"
             }
@@ -288,11 +292,11 @@ function Run-Tests
             }
             Write-Host -ForegroundColor $color "$result"
         }
-        elseif ($lineType -eq "Function")
+        elseif ($lineType -eq $translations.function)
         {
             $writeit = $verbose
-            $result = (Get-ControlByCaption -control $row -caption "Result").StringValue
-            if ($result -eq "Success")
+            $result = (Get-ControlByCaption -control $row -caption $translations.result).StringValue
+            if ($result -eq $translations.success)
             {
                 $color = "Green"
             }
@@ -325,8 +329,9 @@ $serviceUrl = "http://fkdev/NAV/cs"
 $credential = New-Object pscredential 'admin', (ConvertTo-SecureString -String 'P@ssword1' -AsPlainText -Force)
 
 try {
-    $clientSession = New-ClientSessionUserNamePasswordAuthentication -serviceUrl $serviceUrl -credential $credential -InteractionTimeout ([timespan]::FromMinutes(60))
-    Run-Tests -clientSession $clientSession -testSuite "DEFAULT"
+    $culture = "de-DE"
+    $clientSession = New-ClientSessionUserNamePasswordAuthentication -serviceUrl $serviceUrl -credential $credential -InteractionTimeout ([timespan]::FromMinutes(60)) -culture $culture
+    Run-Tests -clientSession $clientSession -testSuite "DEFAULT" -culture $culture
 } finally {
     Remove-ClientSession -clientSession $clientSession
 }
