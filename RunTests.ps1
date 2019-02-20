@@ -342,6 +342,9 @@ function Run-Tests
 
     $allTranslations = Get-Content (Join-Path $PSScriptRoot "translations.json") -Encoding UTF8 | ConvertFrom-Json
     $translations = ($allTranslations.captiontranslations | Where-Object {$_.culture -eq $script:culture}).captions
+    if (!($translations)) {
+        $translations = ($allTranslations.captiontranslations | Where-Object {$_.culture -eq "en-US"}).captions
+    }
 
     $form = Open-Form -page $testPage
     $suiteControl = Get-ControlByCaption -control $form -caption "Suite Name"
