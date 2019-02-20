@@ -430,7 +430,7 @@ $serviceUrl = "http://fkdev/NAV/cs"
 $credential = New-Object pscredential 'admin', (ConvertTo-SecureString -String 'P@ssword1' -AsPlainText -Force)
 
 try {
-    New-ClientSessionUserNamePasswordAuthentication -serviceUrl $serviceUrl -credential $credential -culture "de-DE" -InteractionTimeout ([timespan]::FromMinutes(60))
+    New-ClientSessionUserNamePasswordAuthentication -serviceUrl $serviceUrl -credential $credential -culture "en-US" -InteractionTimeout ([timespan]::FromMinutes(60))
     Run-Tests -testSuite "DEFAULT" -verbose
 } finally {
     Remove-ClientSession
