@@ -4,104 +4,113 @@ using namespace Microsoft.Dynamics.Framework.UI.Client.Interactions
 
 $ErrorActionPreference = "Stop"
 $events = @()
+$clientSession = $null
+$culture = ""
 
 function New-ClientSessionUserNamePasswordAuthentication
 {
-    [OutputType([ClientSession])]
     Param(
         [string] $serviceUrl,
         [pscredential] $credential,
         [timespan] $interactionTimeout = ([timespan]::FromMinutes(10)),
         [string] $culture = "en-US"
     )
+    Remove-ClientSession
     $addressUri = New-Object System.Uri -ArgumentList $serviceUrl
     $addressUri = [ServiceAddressProvider]::ServiceAddress($addressUri)
     $jsonClient = New-Object JsonHttpClient -ArgumentList $addressUri, (New-Object System.Net.NetworkCredential -ArgumentList $credential.UserName, $credential.Password), ([AuthenticationScheme]::UserNamePassword)
     $httpClient = ($jsonClient.GetType().GetField("httpClient", [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Instance)).GetValue($jsonClient)
     $httpClient.Timeout = $interactionTimeout
-    $clientSession = New-Object ClientSession -ArgumentList $jsonClient, (New-Object NonDispatcher), (New-Object 'TimerFactory[TaskTimer]')
-    Open-ClientSession -clientSession $clientSession -culture $culture
-    $clientSession
+    $script:clientSession = New-Object ClientSession -ArgumentList $jsonClient, (New-Object NonDispatcher), (New-Object 'TimerFactory[TaskTimer]')
+    $script:culture = $culture
+    Open-ClientSession
 }
 
 function New-ClientSessionWindowsAuthentication
 {
-    [OutputType([ClientSession])]
     Param(
         [string] $serviceUrl,
         [timespan] $interactionTimeout = ([timespan]::FromMinutes(10)),
         [string] $culture = "en-US"
     )
+    Remove-ClientSession
     $addressUri = New-Object System.Uri -ArgumentList $serviceUrl
     $addressUri = [ServiceAddressProvider]::ServiceAddress($addressUri)
     $jsonClient = New-Object JsonHttpClient -ArgumentList $addressUri, $null, ([AuthenticationScheme]::UserNamePassword)
     $httpClient = ($jsonClient.GetType().GetField("httpClient", [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Instance)).GetValue($jsonClient)
     $httpClient.Timeout = $interactionTimeout
-    $clientSession = New-Object ClientSession -ArgumentList $jsonClient, (New-Object NonDispatcher), (New-Object 'TimerFactory[TaskTimer]')
-    Open-ClientSession -clientSession $clientSession -culture $culture
-    $clientSession
+    $script:clientSession = New-Object ClientSession -ArgumentList $jsonClient, (New-Object NonDispatcher), (New-Object 'TimerFactory[TaskTimer]')
+    $script:culture = $culture
+    Open-ClientSession
 }
 
 function Open-ClientSession
 {
-    Param(
-        [ClientSession] $clientSession,
-        [string] $culture
-    )
-    $clientSessionParameters = New-Object ClientSessionParameters
-    $clientSessionParameters.CultureId = $culture
-    $clientSessionParameters.UICultureId = $culture
-    $clientSessionParameters.AdditionalSettings.Add("IncludeControlIdentifier", $true)
+    $script:clientSessionParameters = New-Object ClientSessionParameters
+    $script:clientSessionParameters.CultureId = $script:culture
+    $script:clientSessionParameters.UICultureId = $script:culture
+    $script:clientSessionParameters.AdditionalSettings.Add("IncludeControlIdentifier", $true)
 
-    $events += @(Register-ObjectEvent -InputObject $clientSession -EventName MessageToShow -Action {
+    $events += @(Register-ObjectEvent -InputObject $script:clientSession -EventName MessageToShow -Action {
         Write-Host -ForegroundColor Yellow "Message : $($EventArgs.Message)"
     })
-    $events += @(Register-ObjectEvent -InputObject $clientSession -EventName CommunicationError -Action {
-        Write-Host -ForegroundColor Yellow "CommunicationError : $($EventArgs.Exception.Message)"
+    $events += @(Register-ObjectEvent -InputObject $script:clientSession -EventName CommunicationError -Action {
+        Write-Host -ForegroundColor Red "CommunicationError : $($EventArgs.Exception.Message)"
+        Remove-ClientSession
     })
-    $events += @(Register-ObjectEvent -InputObject $clientSession -EventName UnhandledException -Action {
-        Write-Host -ForegroundColor Yellow "UnhandledException : $($EventArgs.Exception.Message)"
+    $events += @(Register-ObjectEvent -InputObject $script:clientSession -EventName UnhandledException -Action {
+        Write-Host -ForegroundColor Red "UnhandledException : $($EventArgs.Exception.Message)"
+        Remove-ClientSession
     })
-    $events += @(Register-ObjectEvent -InputObject $clientSession -EventName InvalidCredentialsError -Action {
-        Write-Host -ForegroundColor Yellow "InvalidCredentialsError"
+    $events += @(Register-ObjectEvent -InputObject $script:clientSession -EventName InvalidCredentialsError -Action {
+        Write-Host -ForegroundColor Red "InvalidCredentialsError"
+        Remove-ClientSession
     })
-    $events += @(Register-ObjectEvent -InputObject $clientSession -EventName UriToShow -Action {
+    $events += @(Register-ObjectEvent -InputObject $script:clientSession -EventName UriToShow -Action {
         Write-Host -ForegroundColor Yellow "UriToShow : $($EventArgs.UriToShow)"
     })
+    $events += @(Register-ObjectEvent -InputObject $script:clientSession -EventName DialogToShow -Action {
+        $form = $EventArgs.DialogToShow
+        if ( $form.ControlIdentifier -eq "00000000-0000-0000-0800-0000836bd2d2" ) {
+            $errorText = (Get-ControlByType -control $form -type ([ClientStaticStringControl])).StringValue
+            Write-Host -ForegroundColor Red "ERROR: $errorText"
+        }
+    })
 
-    $clientSession.OpenSessionAsync($clientSessionParameters)
-    Await-state -ClientSession $clientSession -state Ready
+    $script:clientSession.OpenSessionAsync($script:clientSessionParameters)
+    Await-state -state Ready
 }
 
 function Remove-ClientSession
 {
-    Param(
-        [ClientSession] $clientSession
-    )
     $events | % { Unregister-Event $_.Name }
     $events = @()
 
-    if ($clientSession -and ($clientSession.State -ne ([ClientSessionState]::Closed))) {
-        $clientSession.CloseSessionAsync()
-        Await-State -ClientSession $clientSession -State Closed
+    try {
+        if ($script:clientSession -and ($script:clientSession.State -ne ([ClientSessionState]::Closed))) {
+            $script:clientSession.CloseSessionAsync()
+            Await-State -State Closed
+        }
+    }
+    catch {
     }
 }
 
 function Await-State
 {
     Param(
-        [ClientSession] $clientSession,
         [ClientSessionState] $state = ([ClientSessionState]::Ready)
     )
-    While ($clientSession.State -ne $state) {
+    
+    While ($script:clientSession.State -ne $state) {
         Start-Sleep -Milliseconds 100
-        if ($clientSession.State -eq [ClientSessionState]::InError) {
+        if ($script:clientSession.State -eq [ClientSessionState]::InError) {
             throw "ClientSession in Error"
         }
-        if ($clientSession.State -eq [ClientSessionState]::TimedOut) {
+        if ($script:clientSession.State -eq [ClientSessionState]::TimedOut) {
             throw "ClientSession timed out"
         }
-        if ($clientSession.State -eq [ClientSessionState]::Uninitialized) {
+        if ($script:clientSession.State -eq [ClientSessionState]::Uninitialized) {
             throw "ClientSession is Uninitialized"
         }
     }
@@ -110,28 +119,43 @@ function Await-State
 function Invoke-Interaction
 {
     Param(
-        [ClientSession] $clientSession,
         [ClientInteraction] $interaction,
+        [ScriptBlock] $catchForm,
+        [ScriptBlock] $catchDialog,
         [ClientSessionState] $state = ([ClientSessionState]::Ready)
     )
-    $clientSession.InvokeInteractionAsync($interaction)
-    Await-State -clientSession $clientSession -state $state
+    if ($catchForm) {
+        $formToShowEvent = Register-ObjectEvent -InputObject $script:clientSession -EventName FormToShow -Action $catchForm
+    }
+    if ($catchDialog) {
+        $dialogToShowEvent = Register-ObjectEvent -InputObject $script:clientSession -EventName DialogToShow -Action $catchDialog
+    } else {
+        $dialogToShowEvent = Register-ObjectEvent -InputObject $script:clientSession -EventName DialogToShow -Action {
+            Write-Host -ForegroundColor Red "Unexpected dialog"
+            ($eventArgs.DialogToShow) | Out-Host
+        }
+    }
+    try {
+        $script:clientSession.InvokeInteractionAsync($interaction)
+        Await-State -state $state
+    } finally {
+        if ($catchForm) {
+            Unregister-Event -SourceIdentifier $formToShowEvent.Name
+        }      
+        if ($catchDialog) {
+            Unregister-Event -SourceIdentifier $dialogToShowEvent.Name
+        }      
+    }
 }
 
 function Invoke-InteractionAndCatchForm
 {
     Param(
-        [ClientSession] $clientSession,
         [ClientInteraction] $interaction
     )
     $Global:caughtForm = $null
-    $event = Register-ObjectEvent -InputObject $clientSession -EventName FormToShow -Action {
+    Invoke-Interaction -interaction $interaction -CatchForm {
         $Global:caughtForm = $EventArgs.FormToShow
-    }
-    try {
-        Invoke-Interaction -clientSession $clientSession -interaction $interaction
-    } finally {
-        Unregister-Event -SourceIdentifier $event.Name
     }
     $Global:caughtForm
     Remove-Variable caughtForm -Scope Global
@@ -141,31 +165,81 @@ function Open-Form
 {
     [OutputType([ClientLogicalForm])]
     Param(
-        [ClientSession] $clientSession,
         [int] $page
     )
     $interaction = New-Object OpenFormInteraction
     $interaction.Page = $page
-    Invoke-InteractionAndCatchForm -clientSession $clientSession -interaction $interaction
+    $form = Invoke-InteractionAndCatchForm -interaction $interaction
+    $form
 }
 
 function Close-Form
 {
     Param(
-        [ClientSession] $clientSession,
         [ClientLogicalControl] $form
     )
-    Invoke-Interaction -clientSession $clientSession -interaction (New-Object CloseFormInteraction -ArgumentList $form)
+    Invoke-Interaction -interaction (New-Object CloseFormInteraction -ArgumentList $form)
+}
+
+function Get-AllForms
+{
+    $forms = @()
+    $script:clientSession.OpenedForms.GetEnumerator() | % { $forms += $_ }
+    $forms
+}
+
+function Get-ErrorForm
+{
+    $script:clientSession.OpenedForms.GetEnumerator() | % {
+        if ( $_.ControlIdentifier -eq "00000000-0000-0000-0800-0000836bd2d2" ) {
+            (Get-ControlByType -control $_ -type ([ClientStaticStringControl])).StringValue
+        }
+    }
+}
+
+function Dump-Form
+{
+    Param(
+        [ClientLogicalForm] $form
+
+    )
+
+    function Dump-Control
+    {
+        Param(
+            [ClientLogicalControl] $control,
+            [int] $indent
+        )
+
+        Write-Host -ForegroundColor Gray "$(" "*$indent)$($control.Name) " -NoNewline
+
+        if ($control.Visible) { $color = "White" } else { $color = "gray" }
+        if ($control -is [ClientGroupControl]) {
+            Write-Host -ForegroundColor $color "$($control.MappingHint)$($control.Caption)"
+            $control.Children | % { Dump-Control -control $_ -indent ($indent+1) }
+        } elseif ($control -is [ClientStaticStringControl]) {
+            Write-Host -ForegroundColor $color "$($control.StringValue)"
+        } elseif ($control -is [ClientInt32Control]) {
+            Write-Host -ForegroundColor $color "$($control.StringValue)"
+        } elseif ($control -is [ClientStringControl]) {
+            Write-Host -ForegroundColor $color "'$($control.StringValue)'"
+        } elseif ($control -is [ClientActionControl]) {
+            Write-Host -ForegroundColor $color "$($control.Caption)"
+        } else {
+            Write-Host -ForegroundColor $color $control.GetType()
+        }
+
+    }
+
+    $title = "$($form.Name) $($form.Caption)"
+    Write-Host -ForegroundColor Yellow $title
+    Write-Host ("-" * $title.Length)
+    $form.Children | % { Dump-Control -control $_ -indent 1 }
 }
 
 function Close-AllForms
 {
-    Param(
-        [ClientSession] $clientSession
-    )
-    $forms = @()
-    $clientSession.OpenedForms.GetEnumerator() | % { $forms += $_ }
-    $forms | % { Close-Form -clientSession $clientSession -form $_ }
+    Get-AllForms | % { Close-Form -form $_ }
 }
 
 function Get-ControlByCaption
@@ -191,30 +265,27 @@ function Get-ControlByType
 function Save-Value
 {
     Param(
-        [ClientSession] $clientSession,
         [ClientLogicalControl] $control,
         [string] $newValue
     )
-    Invoke-Interaction -clientSession $clientSession -interaction (New-Object SaveValueInteraction -ArgumentList $control, $newValue)
+    Invoke-Interaction -interaction (New-Object SaveValueInteraction -ArgumentList $control, $newValue)
 }
 
 function Scroll-Repeater
 {
     Param(
-        [ClientSession] $clientSession,
         [ClientRepeaterControl] $repeater,
         [int] $by
     )
-    Invoke-Interaction -clientSession $clientSession -interaction (New-Object ScrollRepeaterInteraction -ArgumentList $repeater, $by)
+    Invoke-Interaction -interaction (New-Object ScrollRepeaterInteraction -ArgumentList $repeater, $by)
 }
 
 function Activate-Control
 {
     Param(
-        [ClientSession] $clientSession,
         [ClientLogicalControl] $control
     )
-    Invoke-Interaction -clientSession $clientSession -interaction (New-Object ActivateControlInteraction -ArgumentList $lineTypeControl)
+    Invoke-Interaction -interaction (New-Object ActivateControlInteraction -ArgumentList $lineTypeControl)
 }
 
 function Get-ActionByCaption
@@ -230,23 +301,51 @@ function Get-ActionByCaption
 function Invoke-Action
 {
     Param(
-        [ClientSession] $clientSession,
         [ClientActionControl] $action
     )
-    Invoke-Interaction -clientSession $clientSession -interaction (New-Object InvokeActionInteraction -ArgumentList $action)
+    Invoke-Interaction -interaction (New-Object InvokeActionInteraction -ArgumentList $action)
+}
+
+function Disable-SslVerification
+{
+    if (-not ([System.Management.Automation.PSTypeName]"SslVerification").Type)
+    {
+        Add-Type -TypeDefinition  @"
+using System.Net.Security;
+using System.Security.Cryptography.X509Certificates;
+public static class SslVerification
+{
+    private static bool ValidationCallback(object sender, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors) { return true; }
+    public static void Disable() { System.Net.ServicePointManager.ServerCertificateValidationCallback = ValidationCallback; }
+    public static void Enable()  { System.Net.ServicePointManager.ServerCertificateValidationCallback = null; }
+}
+"@
+    }
+    [SslVerification]::Disable()
+}
+
+function Enable-SslVerification
+{
+    if (([System.Management.Automation.PSTypeName]"SslVerification").Type)
+    {
+        [SslVerification]::Enable()
+    }
 }
 
 function Run-Tests
 {
     Param(
-        [ClientSession] $clientSession,
         [int] $testPage = 130401,
         [string] $testSuite = "DEFAULT",
         [switch] $verbose
     )
-    $form = Open-Form -clientSession $clientSession -page $testPage
+
+    $allTranslations = Get-Content (Join-Path $PSScriptRoot "translations.json") -Encoding UTF8 | ConvertFrom-Json
+    $translations = ($allTranslations.captiontranslations | Where-Object {$_.culture -eq $script:culture}).captions
+
+    $form = Open-Form -page $testPage
     $suiteControl = Get-ControlByCaption -control $form -caption "Suite Name"
-    Save-Value -clientSession $clientSession -control $suiteControl -newValue $testSuite
+    Save-Value -control $suiteControl -newValue $testSuite
     $repeater = Get-ControlByType -control $form -type ([ClientRepeaterControl])
     $index = 0
     
@@ -254,7 +353,7 @@ function Run-Tests
     {
         if ($index -ge ($repeater.Offset + $repeater.DefaultViewport.Count))
         {
-            Scroll-Repeater -clientSession $clientSession -repeater $repeater -by 1
+            Scroll-Repeater -repeater $repeater -by 1
         }
         $rowIndex = $index - $repeater.Offset
         if ($rowIndex -ge $repeater.DefaultViewport.Count)
@@ -265,20 +364,20 @@ function Run-Tests
     
         $lineTypeControl = Get-ControlByType -control $row -type ([ClientSelectionControl])
         $lineType = $lineTypeControl.StringValue
-        $name = (Get-ControlByCaption -control $row -caption "Name").StringValue
-        $codeUnitId = (Get-ControlByCaption -control $row -caption "Codeunit ID").StringValue
+        $name = (Get-ControlByCaption -control $row -caption $translations.name).StringValue
+        $codeUnitId = (Get-ControlByCaption -control $row -caption $translations.codeunitid).StringValue
     
-        if ($lineType -eq "Codeunit") 
+        if ($lineType -eq $translations.codeunit) 
         {
-            Activate-Control -clientSession $clientSession -control $lineTypeControl
+            Activate-Control -control $lineTypeControl
             Write-Host "  $lineType $codeunitId $name " -NoNewline
     
-            $runAction = Get-ActionByCaption -control $form -caption "Run Selected"
-            Invoke-Action -clientSession $clientSession -action $runAction
+            $runAction = Get-ActionByCaption -control $form -caption $translations.runselected
+            Invoke-Action -action $runAction
     
             $row = $repeater.DefaultViewport[$rowIndex]
-            $result = (Get-ControlByCaption -control $row -caption "Result").StringValue
-            if ($result -eq "Success")
+            $result = (Get-ControlByCaption -control $row -caption $translations.result).StringValue
+            if ($result -eq $translations.success)
             {
                 $color = "Green"
             }
@@ -288,11 +387,11 @@ function Run-Tests
             }
             Write-Host -ForegroundColor $color "$result"
         }
-        elseif ($lineType -eq "Function")
+        elseif ($lineType -eq $translations.function)
         {
             $writeit = $verbose
-            $result = (Get-ControlByCaption -control $row -caption "Result").StringValue
-            if ($result -eq "Success")
+            $result = (Get-ControlByCaption -control $row -caption $translations.result).StringValue
+            if ($result -eq $translations.success)
             {
                 $color = "Green"
             }
@@ -313,20 +412,26 @@ function Run-Tests
         $index++
     }
     
-    Close-Form -clientSession $clientSession -form $form
+    Close-Form -form $form
 }
 
 # Load DLL's
 Add-type -Path (Join-Path $PSScriptRoot "Test Assemblies\Microsoft.Dynamics.Framework.UI.Client.dll")
 Add-type -Path (Join-Path $PSScriptRoot "Test Assemblies\NewtonSoft.json.dll")
 
+# Set Keep-Alive on Tcp Level to 1 minute to avoid Azure closing our connection
+[System.Net.ServicePointManager]::SetTcpKeepAlive($true, 120000, 120000)
+
+# Allow all self signed certificates
+#Disable-SslVerification
+
 # Connect to Client Service
 $serviceUrl = "http://fkdev/NAV/cs"
 $credential = New-Object pscredential 'admin', (ConvertTo-SecureString -String 'P@ssword1' -AsPlainText -Force)
 
 try {
-    $clientSession = New-ClientSessionUserNamePasswordAuthentication -serviceUrl $serviceUrl -credential $credential -InteractionTimeout ([timespan]::FromMinutes(60))
-    Run-Tests -clientSession $clientSession -testSuite "DEFAULT"
+    New-ClientSessionUserNamePasswordAuthentication -serviceUrl $serviceUrl -credential $credential -culture "de-DE" -InteractionTimeout ([timespan]::FromMinutes(60))
+    Run-Tests -testSuite "DEFAULT" -verbose
 } finally {
-    Remove-ClientSession -clientSession $clientSession
+    Remove-ClientSession
 }

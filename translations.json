@@ -1,0 +1,28 @@
+﻿{
+  "captiontranslations": [
+    {
+      "culture": "en-US",
+      "captions": {
+        "name": "Name",
+        "codeunitid": "Codeunit ID",
+        "runselected": "Run Selected",
+        "result": "Result",
+        "success": "Success",
+        "codeunit": "Codeunit",
+        "function": "Function"
+      }
+    },
+    {
+      "culture": "de-DE",
+      "captions": {
+        "name": "Name",
+        "codeunitid": "Codeunit ID",
+        "runselected": "Selektierte ausführen",
+        "result": "Ergebnis",
+        "success": "Erfolg",
+        "codeunit": "Codeunit",
+        "function": "Funktion"
+      }
+    }
+  ]
+}

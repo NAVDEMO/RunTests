@@ -1,0 +1,16 @@
+﻿{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "PowerShell",
+            "request": "launch",
+            "name": "Run tests",
+            "script": "${workspaceFolder}/RunTests.ps1",
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
