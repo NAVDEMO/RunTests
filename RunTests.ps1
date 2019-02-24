@@ -369,6 +369,9 @@ function Run-Tests
     )
 
     $form = Open-Form -page $testPage
+    if (!($form)) {
+        throw "Cannot open page $testPage. You might need to import the page object here: http://aka.ms/pstesttoolfob"
+    }
     $suiteControl = Get-ControlByName -control $form -name "CurrentSuiteName"
     Save-Value -control $suiteControl -newValue $testSuite
     $repeater = Get-ControlByType -control $form -type ([ClientRepeaterControl])
