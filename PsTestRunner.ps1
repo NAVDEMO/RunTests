@@ -20,7 +20,7 @@ function Run-Tests
 {
     Param(
         [ClientContext] $clientContext,
-        [int] $testPage = 50100,
+        [int] $testPage = 61266,
         [string] $testSuite = "DEFAULT",
         [switch] $detailed,
         [string] $XUnitResultFileName = "",
@@ -29,6 +29,9 @@ function Run-Tests
     )
 
     $form = $clientContext.OpenForm($testPage)
+    if (!($form)) {
+        throw "Cannot open page $testPage"
+    }
     $suiteControl = $clientContext.GetControlByName($form, "CurrentSuiteName")
     $clientContext.SaveValue($suiteControl, $testSuite)
     $repeater = $clientContext.GetControlByType($form, [ClientRepeaterControl])
