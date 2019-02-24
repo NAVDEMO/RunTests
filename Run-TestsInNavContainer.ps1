@@ -6,12 +6,20 @@
     [string] $AzureDevOps = 'no'
 )
 
-$PsTestRunnerPath = "C:\ProgramData\NavContainerHelper\Extensions\$containerName\PsTestRunner.ps1"
-$ClientContextPath = "C:\ProgramData\NavContainerHelper\Extensions\$containerName\ClientContext.ps1"
+$TestRunnerFolder = "C:\ProgramData\NavContainerHelper\PsTestTool"
+If (!(Test-Path -Path $TestRunnerFolder -PathType Container)) { New-Item -Path $TestRunnerFolder -ItemType Directory | Out-Null }
+
+$PsTestRunnerPath = Join-Path $TestRunnerFolder "PsTestRunner.ps1"
+$ClientContextPath = Join-Path $TestRunnerFolder "ClientContext.ps1"
 
 $WebClient = New-Object System.Net.WebClient
-$WebClient.DownloadFile('https://aka.ms/pstestrunnerps1', $PsTestRunnerPath)
-$WebClient.DownloadFile('https://aka.ms/clientcontextps1', $ClientContextPath)
+if (!(Test-Path $PsTestRunnerPath)) {
+    $WebClient.DownloadFile('https://aka.ms/pstestrunnerps1', $PsTestRunnerPath)
+}
+if (!(Test-Path $ClientContextPath)) {
+    $WebClient.DownloadFile('https://aka.ms/clientcontextps1', $ClientContextPath)
+}
+$WebClient.Dispose()
 
 Invoke-ScriptInNavContainer -containerName $containerName { Param([pscredential] $credential, [string] $PsTestRunnerPath, [string] $XUnitResultFileName)
 
@@ -24,7 +32,7 @@ Invoke-ScriptInNavContainer -containerName $containerName { Param([pscredential]
     $protocol = $publicWebBaseUrl.Substring(0, $idx+2)
     $disableSslVerification = ($protocol -eq "https://")
 
-    . $PsTestRunnerPath  -newtonSoftDllPath $newtonSoftDllPath -clientDllPath $clientDllPath -XUnitResultFileName $XUnitResultFileName -serviceUrl "${protocol}localhost/NAV/cs" -credential $credential -disableSslVerification:$disableSslVerification
+    . $PsTestRunnerPath -newtonSoftDllPath $newtonSoftDllPath -clientDllPath $clientDllPath -XUnitResultFileName $XUnitResultFileName -serviceUrl "${protocol}localhost/NAV/cs" -credential $credential -disableSslVerification:$disableSslVerification
 
 } -argumentList $credential, $PsTestRunnerPath, $XUnitResultFileName
 

@@ -1,9 +1,13 @@
 ﻿Param(
+    [Parameter(Mandatory=$true)]
     [string] $clientDllPath = (Join-Path $PSScriptRoot "Test Assemblies\Microsoft.Dynamics.Framework.UI.Client.dll"),
-    [string] $newtonSoftDllPath = (Join-Path $PSScriptRoot "Test Assemblies\NewtonSoft.json.dll"),
+    [Parameter(Mandatory=$true)]
+    [string] $newtonSoftDllPath,
     [string] $clientContextScriptPath = (Join-Path $PSScriptRoot "ClientContext.ps1"),
-    [string] $serviceUrl = "http://fkdev/NAV/cs",
-    [pscredential] $credential = (New-Object pscredential 'admin', (ConvertTo-SecureString -String 'P@ssword1' -AsPlainText -Force)),
+    [Parameter(Mandatory=$true)]
+    [string] $serviceUrl,
+    [Parameter(Mandatory=$true)]
+    [pscredential] $credential,
     [timespan] $tcpKeepAlive = [timespan]::FromMinutes(2),
     [timespan] $transactionTimeout = [timespan]::FromMinutes(10),
     [switch] $disableSslVerification,
@@ -30,7 +34,7 @@ function Run-Tests
 
     $form = $clientContext.OpenForm($testPage)
     if (!($form)) {
-        throw "Cannot open page $testPage"
+        throw "Cannot open page $testPage. You might need to import the page object here: http://aka.ms/pstesttoolfob"
     }
     $suiteControl = $clientContext.GetControlByName($form, "CurrentSuiteName")
     $clientContext.SaveValue($suiteControl, $testSuite)
