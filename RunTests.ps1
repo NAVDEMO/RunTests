@@ -252,6 +252,16 @@ function Get-ControlByCaption
     $control.ContainedControls | Where-Object { $_.Caption.Replace("&","") -eq $caption } | Select-Object -First 1
 }
 
+function Get-ControlByName
+{
+    [OutputType([ClientLogicalControl])]
+    Param(
+        [ClientLogicalControl] $control,
+        [string] $name
+    )
+    $control.ContainedControls | Where-Object { $_.Name -eq $name } | Select-Object -First 1
+}
+
 function Get-ControlByType
 {
     [OutputType([ClientLogicalControl])]
@@ -298,12 +308,30 @@ function Get-ActionByCaption
     $control.ContainedControls | Where-Object { ($_ -is [ClientActionControl]) -and ($_.Caption.Replace("&","") -eq $caption) } | Select-Object -First 1
 }
 
+function Get-ActionByName
+{
+    [OutputType([ClientActionControl])]
+    Param(
+        [ClientLogicalControl] $control,
+        [string] $name
+    )
+    $control.ContainedControls | Where-Object { ($_ -is [ClientActionControl]) -and ($_.Name -eq $name) } | Select-Object -First 1
+}
+
 function Invoke-Action
 {
     Param(
         [ClientActionControl] $action
     )
     Invoke-Interaction -interaction (New-Object InvokeActionInteraction -ArgumentList $action)
+}
+
+function Invoke-ActionAndCatchForm
+{
+    Param(
+        [ClientActionControl] $action
+    )
+    Invoke-InteractionAndCatchForm -interaction (New-Object InvokeActionInteraction -ArgumentList $action)
 }
 
 function Disable-SslVerification
@@ -335,19 +363,13 @@ function Enable-SslVerification
 function Run-Tests
 {
     Param(
-        [int] $testPage = 130401,
+        [int] $testPage = 61266,
         [string] $testSuite = "DEFAULT",
         [switch] $verbose
     )
 
-    $allTranslations = Get-Content (Join-Path $PSScriptRoot "translations.json") -Encoding UTF8 | ConvertFrom-Json
-    $translations = ($allTranslations.captiontranslations | Where-Object {$_.culture -eq $script:culture}).captions
-    if (!($translations)) {
-        $translations = ($allTranslations.captiontranslations | Where-Object {$_.culture -eq "en-US"}).captions
-    }
-
     $form = Open-Form -page $testPage
-    $suiteControl = Get-ControlByCaption -control $form -caption "Suite Name"
+    $suiteControl = Get-ControlByName -control $form -name "CurrentSuiteName"
     Save-Value -control $suiteControl -newValue $testSuite
     $repeater = Get-ControlByType -control $form -type ([ClientRepeaterControl])
     $index = 0
@@ -365,52 +387,71 @@ function Run-Tests
         }
         $row = $repeater.DefaultViewport[$rowIndex]
     
-        $lineTypeControl = Get-ControlByType -control $row -type ([ClientSelectionControl])
+        $lineTypeControl = Get-ControlByName -control $row -name "LineType"
         $lineType = $lineTypeControl.StringValue
-        $name = (Get-ControlByCaption -control $row -caption $translations.name).StringValue
-        $codeUnitId = (Get-ControlByCaption -control $row -caption $translations.codeunitid).StringValue
-    
-        if ($lineType -eq $translations.codeunit) 
+        $name = (Get-ControlByName -control $row -name "Name").StringValue
+        $codeUnitId = (Get-ControlByName -control $row -name "TestCodeunit").StringValue
+
+        if ($lineType -eq "1") 
         {
             Activate-Control -control $lineTypeControl
-            Write-Host "  $lineType $codeunitId $name " -NoNewline
+            Write-Host "  Codeunit $codeunitId $name " -NoNewline
     
-            $runAction = Get-ActionByCaption -control $form -caption $translations.runselected
+            $runAction = Get-ActionByName -control $form -name "RunSelected"
             Invoke-Action -action $runAction
     
             $row = $repeater.DefaultViewport[$rowIndex]
-            $result = (Get-ControlByCaption -control $row -caption $translations.result).StringValue
-            if ($result -eq $translations.success)
+            $result = (Get-ControlByName -control $row -name "Result").StringValue
+            $startTime = (Get-ControlByName -control $row -name "Start Time").ObjectValue
+            $finishTime = (Get-ControlByName -control $row -name "Finish Time").ObjectValue
+            $duration = $finishTime.Subtract($startTime)
+            if ($result -eq "2")
             {
                 $color = "Green"
+                $resultStr = "Success"
             }
             else
             {
                 $color = "Red"
+                $resultStr = "Failure"
             }
-            Write-Host -ForegroundColor $color "$result"
+            Write-Host -ForegroundColor $color "$resultStr ($($duration.TotalSeconds) seconds)"
         }
-        elseif ($lineType -eq $translations.function)
+        elseif ($lineType -eq "2")
         {
             $writeit = $verbose
-            $result = (Get-ControlByCaption -control $row -caption $translations.result).StringValue
-            if ($result -eq $translations.success)
+            $result = (Get-ControlByName -control $row -name "Result").StringValue
+            $startTime = (Get-ControlByName -control $row -name "Start Time").ObjectValue
+            $finishTime = (Get-ControlByName -control $row -name "Finish Time").ObjectValue
+            $duration = $finishTime.Subtract($startTime)
+            if ($result -eq "2")
             {
                 $color = "Green"
+                $resultStr = "Success"
             }
-            else
-            {
+            elseif ($result -eq "1") {
                 $color = "Red"
+                $firstError = (Get-ControlByName -control $row -name "First Error").StringValue
+                $resultStr = "Error: $firstError"
                 $writeit = $true
+            }
+            else {
+                $color = "Yellow"
             }
             if ($writeit) 
             {
-                Write-Host -ForegroundColor $color "    $lineType $name $result"
+                Write-Host -ForegroundColor $color "    Testfunction $name $resultStr ($($duration.TotalMilliseconds) milliseconds)"
+            }
+            if ($result -eq "1" -and $verbose) {
+                $callStack = (Get-ControlByName -control $row -name "Call Stack").StringValue
+                if ($callStack.EndsWith("\")) { $callStack = $callStack.Substring(0,$callStack.Length-1) }
+                Write-Host "      $($callStack.Replace('\','
+      '))"
             }
         }
         else
         {
-            Write-Host "$lineType $name" 
+            Write-Host "Group $name" 
         }
         $index++
     }
