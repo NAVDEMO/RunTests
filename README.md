@@ -2,6 +2,10 @@
 
 This is a Proof Of Concept prototype of a PowerShell based test runner for NAV / Business Central.
 
+The Test Runner will execute a test suite with GUI Allowed set to True to allow you to run normal tests and also testpages.
+
+It is NOT part of this POC how to create test suites or add tests to the test suite. The idea is that this should be done in the OnInstall trigger of the app you want to test, from a RapidStart package, an API, some PowerShell cmdlets or whats best.
+
 ## Files
 - RunTests.ps1 is the "old" (a few days old) version, which does everything in one script. This was later split up into three files:
 - ClientContext.ps1 is a PowerShell class for creating a Client Services connection. This class cannot be included before the right versions of NewtonSoft.dll and UI.Client.dll
@@ -35,5 +39,6 @@ Run Run-TestsInNavContainer.ps1 to invoke the test runner inside the container
 - Currently the test runner page is hardcoded at ID=61266 - this will either be part of the Testtoolkit, become an AL App or find another way to not block an object ID.
 - Tests, Tests, Tests
 - Blog posts will be updated on running tests
+- Describe mechanisms for apps to add their tests to testsuites on install (thanks Mike Glue for the PR/Idea)
 - Project will move to microsoft based github repo
 - This github repository will be deleted.
