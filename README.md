@@ -33,6 +33,10 @@ Run RunTests2.ps1 to invoke the test runner from the host.
 
 Run Run-TestsInNavContainer.ps1 to invoke the test runner inside the container
 
+## If you have issues or ideas
+
+If you run into any issues or have any ideas that you think we should consider, please create issues on this repository. Please also follow the issues list, the commits/checkins or this readme to see what is happening on the project.
+
 ## What next
 
 - Run-TestsInNavContainer will become part of NavContainerHelper for use in CI/CD
