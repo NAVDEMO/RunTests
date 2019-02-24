@@ -1,6 +1,7 @@
 ﻿Param(
     [string] $containerName = "fkdev",
     [pscredential] $credential = (New-Object pscredential 'admin', (ConvertTo-SecureString -String 'P@ssword1' -AsPlainText -Force)),
+    [string] $testSuite = "DEFAULT",
     [string] $XUnitResultFileName = "C:\ProgramData\NavContainerHelper\Results.xml",
     [ValidateSet('no','error','warning')]
     [string] $AzureDevOps = 'no'
@@ -11,17 +12,20 @@ If (!(Test-Path -Path $TestRunnerFolder -PathType Container)) { New-Item -Path $
 
 $PsTestRunnerPath = Join-Path $TestRunnerFolder "PsTestRunner.ps1"
 $ClientContextPath = Join-Path $TestRunnerFolder "ClientContext.ps1"
+$fobfile = Join-Path $TestRunnerFolder "PSTestTool.fob"
 
-$WebClient = New-Object System.Net.WebClient
 if (!(Test-Path $PsTestRunnerPath)) {
-    $WebClient.DownloadFile('https://aka.ms/pstestrunnerps1', $PsTestRunnerPath)
+    Download-File -sourceUrl "https://aka.ms/pstestrunnerps1" -destinationFile $PsTestRunnerPath
 }
 if (!(Test-Path $ClientContextPath)) {
-    $WebClient.DownloadFile('https://aka.ms/clientcontextps1', $ClientContextPath)
+    Download-File -sourceUrl "https://aka.ms/clientcontextps1" -destinationFile $ClientContextPath
 }
-$WebClient.Dispose()
+if (!(Test-Path $fobfile)) {
+    Download-File -sourceUrl "https://aka.ms/pstesttoolfob" -destinationFile $fobfile
+}
+Import-ObjectsToNavContainer -containerName $containerName -objectsFile $fobfile -sqlCredential $credential
 
-Invoke-ScriptInNavContainer -containerName $containerName { Param([pscredential] $credential, [string] $PsTestRunnerPath, [string] $XUnitResultFileName)
+Invoke-ScriptInNavContainer -containerName $containerName { Param([pscredential] $credential, [string] $testSuite, [string] $PsTestRunnerPath, [string] $XUnitResultFileName)
 
     $newtonSoftDllPath = (Get-Item "C:\Program Files\Microsoft Dynamics NAV\*\Service\NewtonSoft.json.dll").FullName
     $clientDllPath = "C:\Test Assemblies\Microsoft.Dynamics.Framework.UI.Client.dll"
@@ -32,8 +36,8 @@ Invoke-ScriptInNavContainer -containerName $containerName { Param([pscredential]
     $protocol = $publicWebBaseUrl.Substring(0, $idx+2)
     $disableSslVerification = ($protocol -eq "https://")
 
-    . $PsTestRunnerPath -newtonSoftDllPath $newtonSoftDllPath -clientDllPath $clientDllPath -XUnitResultFileName $XUnitResultFileName -serviceUrl "${protocol}localhost/NAV/cs" -credential $credential -disableSslVerification:$disableSslVerification
+    . $PsTestRunnerPath -newtonSoftDllPath $newtonSoftDllPath -clientDllPath $clientDllPath -TestSuite $testSuite -XUnitResultFileName $XUnitResultFileName -serviceUrl "${protocol}localhost/NAV/cs" -credential $credential -disableSslVerification:$disableSslVerification
 
-} -argumentList $credential, $PsTestRunnerPath, $XUnitResultFileName
+} -argumentList $credential, $testSuite, $PsTestRunnerPath, $XUnitResultFileName
 
 & notepad.exe $XUnitResultFileName
