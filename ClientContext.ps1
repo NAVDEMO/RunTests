@@ -24,25 +24,20 @@ class ClientContext {
         $this.ClientContext($serviceUrl, $credential, ([timespan]::FromMinutes(10)), 'en-US')
     }
 
-    #
-    #function New-ClientSessionWindowsAuthentication
-    #{
-    #    Param(
-    #        [string] $serviceUrl,
-    #        [timespan] $interactionTimeout = ([timespan]::FromMinutes(10)),
-    #        [string] $culture = "en-US"
-    #    )
-    #    Remove-ClientSession
-    #    $addressUri = New-Object System.Uri -ArgumentList $serviceUrl
-    #    $addressUri = [ServiceAddressProvider]::ServiceAddress($addressUri)
-    #    $jsonClient = New-Object JsonHttpClient -ArgumentList $addressUri, $null, ([AuthenticationScheme]::UserNamePassword)
-    #    $httpClient = ($jsonClient.GetType().GetField("httpClient", [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Instance)).GetValue($jsonClient)
-    #    $httpClient.Timeout = $interactionTimeout
-    #    $script:clientSession = New-Object ClientSession -ArgumentList $jsonClient, (New-Object NonDispatcher), (New-Object 'TimerFactory[TaskTimer]')
-    #    $script:culture = $culture
-    #    Open-ClientSession
-    #}
-    #
+    ClientContext([string] $serviceUrl, [timespan] $interactionTimeout = ([timespan]::FromMinutes(10)), [string] $culture = "en-US") {
+        $addressUri = New-Object System.Uri -ArgumentList $serviceUrl
+        $addressUri = [ServiceAddressProvider]::ServiceAddress($addressUri)
+        $jsonClient = New-Object JsonHttpClient -ArgumentList $addressUri, $null, ([AuthenticationScheme]::Windows)
+        $httpClient = ($jsonClient.GetType().GetField("httpClient", [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Instance)).GetValue($jsonClient)
+        $httpClient.Timeout = $interactionTimeout
+        $this.clientSession = New-Object ClientSession -ArgumentList $jsonClient, (New-Object NonDispatcher), (New-Object 'TimerFactory[TaskTimer]')
+        $this.culture = $culture
+        $this.OpenSession()
+    }
+    
+    ClientContext([string] $serviceUrl) {
+        $this.ClientContext($serviceUrl, ([timespan]::FromMinutes(10)), 'en-US')
+    }
     
     OpenSession() {
         $clientSessionParameters = New-Object ClientSessionParameters

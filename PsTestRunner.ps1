@@ -6,7 +6,9 @@
     [string] $clientContextScriptPath = (Join-Path $PSScriptRoot "ClientContext.ps1"),
     [Parameter(Mandatory=$true)]
     [string] $serviceUrl,
-    [Parameter(Mandatory=$true)]
+    [ValidateSet('Windows','NavUserPassword')]
+    [string]$auth='NavUserPassword',
+    [Parameter(Mandatory=$false)]
     [pscredential] $credential,
     [timespan] $tcpKeepAlive = [timespan]::FromMinutes(2),
     [timespan] $transactionTimeout = [timespan]::FromMinutes(10),
@@ -222,6 +224,10 @@ Add-type -Path $newtonSoftDllPath
 # Allow all self signed certificates
 if ($disableSslVerification) {
     Disable-SslVerification
+}
+
+if ($auth -eq "NavUserPassword" -and ($Credential -eq $null -or $credential -eq [System.Management.Automation.PSCredential]::Empty)) {
+    throw "You need to specify credentials if using NavUserPassword authentication"
 }
 
 try {
