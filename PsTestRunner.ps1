@@ -1,9 +1,9 @@
 ﻿Param(
     [Parameter(Mandatory=$true)]
-    [string] $clientDllPath = (Join-Path $PSScriptRoot "Test Assemblies\Microsoft.Dynamics.Framework.UI.Client.dll"),
+    [string] $clientDllPath,
     [Parameter(Mandatory=$true)]
     [string] $newtonSoftDllPath,
-    [string] $clientContextScriptPath = (Join-Path $PSScriptRoot "ClientContext.ps1"),
+    [string] $clientContextScriptPath = $null,
     [Parameter(Mandatory=$true)]
     [string] $serviceUrl,
     [ValidateSet('Windows','NavUserPassword','AAD')]
@@ -216,7 +216,11 @@ $ErrorActionPreference = "Stop"
 Add-type -Path $clientDllPath
 Add-type -Path $newtonSoftDllPath
 
-. (Join-Path $PSScriptRoot "ClientContext.ps1")
+if ($clientContextScriptPath -eq $null) {
+    $clientContextScriptPath = Join-Path $PSScriptRoot "ClientContext.ps1"
+}
+
+. $clientContextScriptPath
 
 # Set Keep-Alive on Tcp Level to 1 minute to avoid Azure closing our connection
 [System.Net.ServicePointManager]::SetTcpKeepAlive($true, [int]$tcpKeepAlive.TotalMilliseconds, [int]$tcpKeepAlive.TotalMilliseconds)
@@ -227,7 +231,7 @@ if ($disableSslVerification) {
 }
 
 if ($auth -eq "Windows") {
-    $clientContext = [ClientContext]::new($serviceUrl, $credential, $transactionTimeout, $culture)
+    $clientContext = [ClientContext]::new($serviceUrl, $transactionTimeout, $culture)
 } elseif ($auth -eq "NavUserPassword") {
     if ($Credential -eq $null -or $credential -eq [System.Management.Automation.PSCredential]::Empty) {
         throw "You need to specify credentials if using NavUserPassword authentication"

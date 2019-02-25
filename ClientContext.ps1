@@ -9,7 +9,7 @@ class ClientContext {
     $culture = ""
     $caughtForm = $null
 
-    ClientContext([string] $serviceUrl, [pscredential] $credential, [timespan] $interactionTimeout = ([timespan]::FromMinutes(10)), [string] $culture = "en-US") {
+    ClientContext([string] $serviceUrl, [pscredential] $credential, [timespan] $interactionTimeout, [string] $culture) {
         $addressUri = New-Object System.Uri -ArgumentList $serviceUrl
         $addressUri = [ServiceAddressProvider]::ServiceAddress($addressUri)
         $jsonClient = New-Object JsonHttpClient -ArgumentList $addressUri, (New-Object System.Net.NetworkCredential -ArgumentList $credential.UserName, $credential.Password), ([AuthenticationScheme]::UserNamePassword)
@@ -24,7 +24,7 @@ class ClientContext {
         $this.ClientContext($serviceUrl, $credential, ([timespan]::FromMinutes(10)), 'en-US')
     }
 
-    ClientContext([string] $serviceUrl, [timespan] $interactionTimeout = ([timespan]::FromMinutes(10)), [string] $culture = "en-US") {
+    ClientContext([string] $serviceUrl, [timespan] $interactionTimeout, [string] $culture) {
         $addressUri = New-Object System.Uri -ArgumentList $serviceUrl
         $addressUri = [ServiceAddressProvider]::ServiceAddress($addressUri)
         $jsonClient = New-Object JsonHttpClient -ArgumentList $addressUri, $null, ([AuthenticationScheme]::Windows)
