@@ -10,35 +10,32 @@ class ClientContext {
     $caughtForm = $null
 
     ClientContext([string] $serviceUrl, [pscredential] $credential, [timespan] $interactionTimeout, [string] $culture) {
-        $addressUri = New-Object System.Uri -ArgumentList $serviceUrl
-        $addressUri = [ServiceAddressProvider]::ServiceAddress($addressUri)
-        $jsonClient = New-Object JsonHttpClient -ArgumentList $addressUri, (New-Object System.Net.NetworkCredential -ArgumentList $credential.UserName, $credential.Password), ([AuthenticationScheme]::UserNamePassword)
-        $httpClient = ($jsonClient.GetType().GetField("httpClient", [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Instance)).GetValue($jsonClient)
-        $httpClient.Timeout = $interactionTimeout
-        $this.clientSession = New-Object ClientSession -ArgumentList $jsonClient, (New-Object NonDispatcher), (New-Object 'TimerFactory[TaskTimer]')
-        $this.culture = $culture
-        $this.OpenSession()
+        $this.Initialize($serviceUrl, ([AuthenticationScheme]::UserNamePassword), (New-Object System.Net.NetworkCredential -ArgumentList $credential.UserName, $credential.Password), $interactionTimeout, $culture)
     }
 
     ClientContext([string] $serviceUrl, [pscredential] $credential) {
-        $this.ClientContext($serviceUrl, $credential, ([timespan]::FromMinutes(10)), 'en-US')
+        $this.Initialize($serviceUrl, ([AuthenticationScheme]::UserNamePassword), (New-Object System.Net.NetworkCredential -ArgumentList $credential.UserName, $credential.Password), ([timespan]::FromMinutes(10)), 'en-US')
     }
 
     ClientContext([string] $serviceUrl, [timespan] $interactionTimeout, [string] $culture) {
+        $this.Initialize($serviceUrl, ([AuthenticationScheme]::Windows), $null, $interactionTimeout, $culture)
+    }
+    
+    ClientContext([string] $serviceUrl) {
+        $this.Initialize($serviceUrl, ([AuthenticationScheme]::Windows), $null, ([timespan]::FromMinutes(10)), 'en-US')
+    }
+    
+    Initialize([string] $serviceUrl, [AuthenticationScheme] $authenticationScheme, [System.Net.NetworkCredential] $credential, [timespan] $interactionTimeout, [string] $culture) {
         $addressUri = New-Object System.Uri -ArgumentList $serviceUrl
         $addressUri = [ServiceAddressProvider]::ServiceAddress($addressUri)
-        $jsonClient = New-Object JsonHttpClient -ArgumentList $addressUri, $null, ([AuthenticationScheme]::Windows)
+        $jsonClient = New-Object JsonHttpClient -ArgumentList $addressUri, $credential, $authenticationScheme
         $httpClient = ($jsonClient.GetType().GetField("httpClient", [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Instance)).GetValue($jsonClient)
         $httpClient.Timeout = $interactionTimeout
         $this.clientSession = New-Object ClientSession -ArgumentList $jsonClient, (New-Object NonDispatcher), (New-Object 'TimerFactory[TaskTimer]')
         $this.culture = $culture
         $this.OpenSession()
     }
-    
-    ClientContext([string] $serviceUrl) {
-        $this.ClientContext($serviceUrl, ([timespan]::FromMinutes(10)), 'en-US')
-    }
-    
+
     OpenSession() {
         $clientSessionParameters = New-Object ClientSessionParameters
         $clientSessionParameters.CultureId = $this.culture
