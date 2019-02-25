@@ -6,8 +6,8 @@
     [string] $clientContextScriptPath = (Join-Path $PSScriptRoot "ClientContext.ps1"),
     [Parameter(Mandatory=$true)]
     [string] $serviceUrl,
-    [ValidateSet('Windows','NavUserPassword')]
-    [string]$auth='NavUserPassword',
+    [ValidateSet('Windows','NavUserPassword','AAD')]
+    [string] $auth='NavUserPassword',
     [Parameter(Mandatory=$false)]
     [pscredential] $credential,
     [timespan] $tcpKeepAlive = [timespan]::FromMinutes(2),
@@ -226,12 +226,18 @@ if ($disableSslVerification) {
     Disable-SslVerification
 }
 
-if ($auth -eq "NavUserPassword" -and ($Credential -eq $null -or $credential -eq [System.Management.Automation.PSCredential]::Empty)) {
-    throw "You need to specify credentials if using NavUserPassword authentication"
+if ($auth -eq "Windows") {
+    $clientContext = [ClientContext]::new($serviceUrl, $credential, $transactionTimeout, $culture)
+} elseif ($auth -eq "NavUserPassword") {
+    if ($Credential -eq $null -or $credential -eq [System.Management.Automation.PSCredential]::Empty) {
+        throw "You need to specify credentials if using NavUserPassword authentication"
+    }
+    $clientContext = [ClientContext]::new($serviceUrl, $credential, $transactionTimeout, $culture)
+} else {
+    throw "Unsupported authentication setting"
 }
 
 try {
-    $clientContext = [ClientContext]::new($serviceUrl, $credential, $transactionTimeout, $culture)
     Run-Tests -clientContext $clientContext -testSuite $testSuite -testPage $testPage -AzureDevOps $AzureDevOps -Detailed:$detailed -XUnitResultFileName $XUnitResultFileName
 } finally {
     if ($disableSslVerification) {
