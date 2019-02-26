@@ -216,7 +216,7 @@ $ErrorActionPreference = "Stop"
 Add-type -Path $clientDllPath
 Add-type -Path $newtonSoftDllPath
 
-if ($clientContextScriptPath -eq $null) {
+if (!($clientContextScriptPath)) {
     $clientContextScriptPath = Join-Path $PSScriptRoot "ClientContext.ps1"
 }
 
