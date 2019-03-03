@@ -98,7 +98,7 @@ function Get-Tests {
         }
     }
     $clientContext.CloseForm($form)
-    return ,$Tests
+    $Tests | ConvertTo-Json
 }
 
 function Run-Tests {
@@ -339,12 +339,3 @@ function Set-TcpKeepAlive {
     # Set Keep-Alive on Tcp Level to 1 minute to avoid Azure closing our connection
     [System.Net.ServicePointManager]::SetTcpKeepAlive($true, [int]$tcpKeepAlive.TotalMilliseconds, [int]$tcpKeepAlive.TotalMilliseconds)
 }
-
-#try {
-#    Run-Tests -clientContext $clientContext -testSuite $testSuite -testCodeunit $testCodeunit -testFunction $testFunction -testPage $testPage -AzureDevOps $AzureDevOps -Detailed:$detailed -XUnitResultFileName $XUnitResultFileName
-#} finally {
-#    if ($disableSslVerification) {
-#        Enable-SslVerification
-#    }
-#    $clientContext.Dispose()
-#}
