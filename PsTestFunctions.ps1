@@ -1,10 +1,23 @@
-﻿function New-ClientContext {
+﻿Param(
+    [Parameter(Mandatory=$true)]
+    [string] $clientDllPath,
+    [Parameter(Mandatory=$true)]
+    [string] $newtonSoftDllPath,
+    [string] $clientContextScriptPath = $null
+)
+
+# Load DLL's
+Add-type -Path $clientDllPath
+Add-type -Path $newtonSoftDllPath
+
+if (!($clientContextScriptPath)) {
+    $clientContextScriptPath = Join-Path $PSScriptRoot "ClientContext.ps1"
+}
+
+. $clientContextScriptPath
+
+function New-ClientContext {
     Param(
-        [Parameter(Mandatory=$true)]
-        [string] $clientDllPath,
-        [Parameter(Mandatory=$true)]
-        [string] $newtonSoftDllPath,
-        [string] $clientContextScriptPath = $null,
         [Parameter(Mandatory=$true)]
         [string] $serviceUrl,
         [ValidateSet('Windows','NavUserPassword','AAD')]
@@ -14,16 +27,6 @@
         [timespan] $transactionTimeout = [timespan]::FromMinutes(10),
         [string] $culture = "en-US"
     )
-
-    # Load DLL's
-    Add-type -Path $clientDllPath
-    Add-type -Path $newtonSoftDllPath
-
-    if (!($clientContextScriptPath)) {
-        $clientContextScriptPath = Join-Path $PSScriptRoot "ClientContext.ps1"
-    }
-
-    . $clientContextScriptPath
 
     if ($auth -eq "Windows") {
         return [ClientContext]::new($serviceUrl, $transactionTimeout, $culture)
