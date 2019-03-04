@@ -242,7 +242,7 @@ function Run-Tests {
                     $XUnitAssembly.SetAttribute("total",([int]$XUnitAssembly.GetAttribute("total")+1))
                     $XUnitTest = $XUnitDoc.CreateElement("test")
                     $XUnitCollection.AppendChild($XUnitTest) | Out-Null
-                    $XUnitTest.SetAttribute("name", $XUnitAssembly.GetAttribute("name"))
+                    $XUnitTest.SetAttribute("name", $XUnitAssembly.GetAttribute("name")+':'+$Name)
                     $XUnitTest.SetAttribute("method", $Name)
                     $XUnitTest.SetAttribute("time", ([Math]::Round($testduration.TotalSeconds,3)).ToString([System.Globalization.CultureInfo]::InvariantCulture))
                 }
