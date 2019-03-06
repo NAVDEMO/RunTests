@@ -154,7 +154,7 @@ function Run-Tests {
             if ($linetype -eq "1") {
                 $codeUnitName = $name
                 $codeUnitNames += @{ $codeunitId = $codeunitName }
-            } else {
+            } elseif ($linetype -eq "2") {
                 $codeUnitname = $codeUnitNames[$codeunitId]
             }
         } while (!(($codeunitId -like $testCodeunit -or $codeunitName -like $testCodeunit) -and ($linetype -eq "1" -or $name -like $testFunction)))
