@@ -58,7 +58,7 @@ function Get-Tests {
 
     $form = $clientContext.OpenForm($testPage)
     if (!($form)) {
-        throw "Cannot open page $testPage. You might need to import the page object here: http://aka.ms/pstesttoolfob"
+        throw "Cannot open page $testPage. You might need to import the page object here: http://aka.ms/pstesttoolpagefob"
     }
 
     $suiteControl = $clientContext.GetControlByName($form, "CurrentSuiteName")
@@ -116,7 +116,7 @@ function Run-Tests {
 
     $form = $clientContext.OpenForm($testPage)
     if (!($form)) {
-        throw "Cannot open page $testPage. You might need to import the page object here: http://aka.ms/pstesttoolfob"
+        throw "Cannot open page $testPage. You might need to import the page object here: http://aka.ms/pstesttoolpagefob"
     }
     $suiteControl = $clientContext.GetControlByName($form, "CurrentSuiteName")
     $clientContext.SaveValue($suiteControl, $testSuite)
