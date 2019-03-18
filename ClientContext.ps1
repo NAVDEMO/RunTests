@@ -63,8 +63,8 @@ class ClientContext {
         $this.events += @(Register-ObjectEvent -InputObject $this.clientSession -EventName DialogToShow -Action {
             $form = $EventArgs.DialogToShow
             if ( $form.ControlIdentifier -eq "00000000-0000-0000-0800-0000836bd2d2" ) {
-                $errorText = (Get-ControlByType -control $form -type ([ClientStaticStringControl])).StringValue
-                Write-Host -ForegroundColor Red "ERROR: $errorText"
+                $errorControl = $form.ContainedControls | Where-Object { $_ -is [ClientStaticStringControl] } | Select-Object -First 1                
+                Write-Host -ForegroundColor Red "ERROR: $($errorControl.StringValue)"
             }
         })
     
@@ -137,12 +137,16 @@ class ClientContext {
     }
     
     [string]GetErrorFromErrorForm() {
+        $errorText = ""
         $this.clientSession.OpenedForms.GetEnumerator() | % {
-            if ( $_.ControlIdentifier -eq "00000000-0000-0000-0800-0000836bd2d2" ) {
-                return (Get-ControlByType -control $_ -type ([ClientStaticStringControl])).StringValue
+            $form = $_
+            if ( $form.ControlIdentifier -eq "00000000-0000-0000-0800-0000836bd2d2" ) {
+                $form.ContainedControls | Where-Object { $_ -is [ClientStaticStringControl] } | % {
+                    $errorText = $_.StringValue
+                }
             }
         }
-        return ""
+        return $errorText
     }
     
     [Hashtable]GetFormInfo([ClientLogicalForm] $form) {
