@@ -1,0 +1,231 @@
+OBJECT Page 130409 PS Test Tool Page
+{
+  OBJECT-PROPERTIES
+  {
+    Date=12-03-19;
+    Time=12:57:57;
+    Modified=Yes;
+    Version List=PS Test Tool;
+  }
+  PROPERTIES
+  {
+    CaptionML=ENU=Test Tool;
+    SaveValues=Yes;
+    DeleteAllowed=Yes;
+    ModifyAllowed=Yes;
+    SourceTable=Table130401;
+    DataCaptionExpr=CurrentSuiteName;
+    DelayedInsert=Yes;
+    PageType=Worksheet;
+    AutoSplitKey=Yes;
+    OnOpenPage=BEGIN
+                 IF NOT CALTestSuite.GET(CurrentSuiteName) THEN
+                   IF CALTestSuite.FINDFIRST THEN
+                     CurrentSuiteName := CALTestSuite.Name
+                   ELSE BEGIN
+                     CreateTestSuite(CurrentSuiteName);
+                     COMMIT;
+                   END;
+
+                 FILTERGROUP(2);
+                 SETRANGE("Test Suite",CurrentSuiteName);
+                 FILTERGROUP(0);
+
+                 IF FIND('-') THEN;
+                 CurrPage.UPDATE(FALSE);
+
+                 CALTestSuite.GET(CurrentSuiteName);
+                 CALTestSuite.CALCFIELDS("Tests to Execute");
+               END;
+
+    OnAfterGetRecord=VAR
+                       CALTestResult@1000 : Record 130405;
+                       InStr@1001 : InStream;
+                     BEGIN
+                       LineTypeCode := "Line Type";
+                       ResultCode := Result;
+                       IF "Line Type" <> "Line Type"::Codeunit THEN
+                         "Hit Objects" := 0;
+
+                       CallStackText := '';
+                       IF (Result = Result::Failure) THEN BEGIN
+                         CALTestResult.SETRANGE("Codeunit ID", "Test Codeunit");
+                         IF "Function" <> '' THEN
+                           CALTestResult.SETRANGE("Function Name", "Function");
+                         IF CALTestResult.FINDLAST THEN BEGIN
+                           CALTestResult.CALCFIELDS("Call Stack");
+                           CALTestResult."Call Stack".CREATEINSTREAM(InStr);
+                           InStr.READTEXT(CallStackText);
+                         END;
+                       END;
+                     END;
+
+    ActionList=ACTIONS
+    {
+      { 1900000004;0 ;ActionContainer;
+                      ActionContainerType=ActionItems }
+      { 10      ;1   ;Action    ;
+                      Name=RunSelected;
+                      CaptionML=ENU=Run &Selected;
+                      ApplicationArea=#All;
+                      Promoted=Yes;
+                      PromotedIsBig=Yes;
+                      Image=TestFile;
+                      PromotedCategory=Process;
+                      OnAction=VAR
+                                 SelectedCALTestLine@1000 : Record 130401;
+                                 CALTestMgt@1001 : Codeunit 130401;
+                               BEGIN
+                                 CurrPage.SETSELECTIONFILTER(SelectedCALTestLine);
+                                 SelectedCALTestLine.SETRANGE("Test Suite","Test Suite");
+                                 CALTestMgt.RunSelected(SelectedCALTestLine);
+                                 CurrPage.UPDATE(FALSE);
+                               END;
+                                }
+    }
+  }
+  CONTROLS
+  {
+    { 1900000001;0;Container;
+                ContainerType=ContentArea }
+
+    { 30  ;1   ;Field     ;
+                Name=CurrentSuiteName;
+                CaptionML=ENU=Suite Name;
+                ApplicationArea=#All;
+                SourceExpr=CurrentSuiteName;
+                OnValidate=BEGIN
+                             CALTestSuite.GET(CurrentSuiteName);
+                             CALTestSuite.CALCFIELDS("Tests to Execute");
+                             CurrentSuiteNameOnAfterValidate;
+                           END;
+
+                OnLookup=VAR
+                           CALTestSuite@1000 : Record 130400;
+                         BEGIN
+                           CALTestSuite.Name := CurrentSuiteName;
+                           IF PAGE.RUNMODAL(0,CALTestSuite) <> ACTION::LookupOK THEN
+                             EXIT(FALSE);
+                           Text := CALTestSuite.Name;
+                           EXIT(TRUE);
+                         END;
+
+                ImplicitType=Code10 }
+
+    { 1   ;1   ;Group     ;
+                GroupType=Repeater }
+
+    { 16  ;2   ;Field     ;
+                Name=LineType;
+                ApplicationArea=#All;
+                SourceExpr=LineTypeCode;
+                ImplicitType=Integer }
+
+    { 22  ;2   ;Field     ;
+                Name=TestCodeunit;
+                ApplicationArea=#All;
+                SourceExpr="Test Codeunit";
+                ImplicitType=Integer }
+
+    { 20  ;2   ;Field     ;
+                Name=Name;
+                ApplicationArea=#All;
+                SourceExpr=Name;
+                ImplicitType=Text128 }
+
+    { 11  ;2   ;Field     ;
+                ApplicationArea=#All;
+                SourceExpr="Hit Objects";
+                OnDrillDown=VAR
+                              CALTestCoverageMap@1000 : Record 130406;
+                            BEGIN
+                              CALTestCoverageMap.ShowHitObjects("Test Codeunit");
+                            END;
+
+                ImplicitType=Integer }
+
+    { 25  ;2   ;Field     ;
+                Name=Run;
+                ApplicationArea=#All;
+                SourceExpr=Run;
+                OnValidate=BEGIN
+                             CurrPage.UPDATE(TRUE);
+                           END;
+
+                ImplicitType=Boolean }
+
+    { 28  ;2   ;Field     ;
+                Name=Result;
+                ApplicationArea=#All;
+                BlankZero=Yes;
+                SourceExpr=ResultCode;
+                ImplicitType=Integer }
+
+    { 31  ;2   ;Field     ;
+                Name=First Error;
+                DrillDown=Yes;
+                ApplicationArea=#All;
+                SourceExpr="First Error";
+                OnDrillDown=BEGIN
+                              ShowTestResults
+                            END;
+
+                ImplicitType=Text250 }
+
+    { 4   ;2   ;Field     ;
+                ApplicationArea=#All;
+                SourceExpr="Start Time";
+                ImplicitType=DateTime }
+
+    { 9   ;2   ;Field     ;
+                ApplicationArea=#All;
+                SourceExpr="Finish Time";
+                ImplicitType=DateTime }
+
+    { 14  ;2   ;Field     ;
+                Name=Call Stack;
+                ApplicationArea=#All;
+                SourceExpr=CallStackText;
+                ImplicitType=Text }
+
+  }
+  CODE
+  {
+    VAR
+      CALTestSuite@1001 : Record 130400;
+      CurrentSuiteName@1000 : Code[10];
+      ResultCode@1002 : Integer INDATASET;
+      LineTypeCode@1003 : Integer INDATASET;
+      CallStackText@1004 : Text INDATASET;
+
+    [LineStart(37)]
+    LOCAL PROCEDURE CreateTestSuite@2(VAR NewSuiteName@1001 : Code[10]);
+    VAR
+      CALTestSuite@1003 : Record 130400;
+      CALTestMgt@1000 : Codeunit 130401;
+    BEGIN
+      CALTestMgt.CreateNewSuite(NewSuiteName);
+      CALTestSuite.GET(NewSuiteName);
+    END;
+
+    [LineStart(41)]
+    LOCAL PROCEDURE CurrentSuiteNameOnAfterValidate@19020347();
+    BEGIN
+      CurrPage.SAVERECORD;
+
+      FILTERGROUP(2);
+      SETRANGE("Test Suite",CurrentSuiteName);
+      FILTERGROUP(0);
+
+      IF FIND('-') THEN;
+      CurrPage.UPDATE(FALSE);
+
+      CALTestSuite.GET(CurrentSuiteName);
+      CALTestSuite.CALCFIELDS("Tests to Execute");
+    END;
+
+    BEGIN
+    END.
+  }
+}
+

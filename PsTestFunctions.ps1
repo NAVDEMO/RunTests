@@ -53,6 +53,7 @@ function Get-Tests {
     Param(
         [ClientContext] $clientContext,
         [int] $testPage = 130409,
+        [string] $testSuite = "DEFAULT",
         [string] $testCodeunit = "*"
     )
 
@@ -63,10 +64,12 @@ function Get-Tests {
 
     $suiteControl = $clientContext.GetControlByName($form, "CurrentSuiteName")
     $clientContext.SaveValue($suiteControl, $testSuite)
+    
     $repeater = $clientContext.GetControlByType($form, [ClientRepeaterControl])
     $index = 0
 
     $Tests = @()
+    $group = $null
     while ($true)
     {
         if ($index -ge ($repeater.Offset + $repeater.DefaultViewport.Count))
@@ -84,12 +87,23 @@ function Get-Tests {
         $lineType = $lineTypeControl.StringValue
         $name = $clientContext.GetControlByName($row, "Name").StringValue
         $codeUnitId = $clientContext.GetControlByName($row, "TestCodeunit").StringValue
-        
-        if ($linetype -eq "1") {
+
+        # Refresh form????
+        #Write-Host "$linetype $name"        
+
+        if ($linetype -eq "0") {
+            $group = @{ "Group" = $name; "Codeunits" = @() }
+            $Tests += $group
+                        
+        } elseif ($linetype -eq "1") {
             $codeUnitName = $name
             if ($codeunitId -like $testCodeunit -or $codeunitName -like $testCodeunit) {
                 $codeunit = @{ "Id" = "$codeunitId"; "Name" = $codeUnitName; "Tests" = @() }
-                $Tests += $codeunit
+                if ($group) {
+                    $group.Codeunits += $codeunit
+                } else {
+                    $Tests += $codeunit
+                }
             }
         } elseif ($lineType -eq "2") {
             if ($codeunitId -like $testCodeunit -or $codeunitName -like $testCodeunit) {
@@ -107,6 +121,7 @@ function Run-Tests {
         [int] $testPage = 130409,
         [string] $testSuite = "DEFAULT",
         [string] $testCodeunit = "*",
+        [string] $testGroup = "*",
         [string] $testFunction = "*",
         [switch] $detailed,
         [string] $XUnitResultFileName = "",
@@ -132,6 +147,7 @@ function Run-Tests {
     
     $TestCodeunitNames = @{}
     $LastCodeunitName = ""
+    $groupName = ""
 
     while ($true)
     {
@@ -151,10 +167,14 @@ function Run-Tests {
             $lineType = $lineTypeControl.StringValue
             $name = $clientContext.GetControlByName($row, "Name").StringValue
             $codeUnitId = $clientContext.GetControlByName($row, "TestCodeunit").StringValue
-            if ($linetype -eq "1") {
+            if ($linetype -eq "0") {
+                $groupName = $name
+            }
+            elseif ($linetype -eq "1") {
                 $codeUnitName = $name
                 $codeUnitNames += @{ $codeunitId = $codeunitName }
-            } elseif ($linetype -eq "2") {
+            }
+            elseif ($linetype -eq "2") {
                 $codeUnitname = $codeUnitNames[$codeunitId]
             }
         } while (!(($codeunitId -like $testCodeunit -or $codeunitName -like $testCodeunit) -and ($linetype -eq "1" -or $name -like $testFunction)))
@@ -164,138 +184,139 @@ function Run-Tests {
             break 
         }
 
-        switch ($linetype) {
-            "1" {
-                $startTime = get-date
-                $totalduration = [Timespan]::Zero
-                if ($TestFunction -eq "*") {
-                    Write-Host "  Codeunit $codeunitId $name " -NoNewline
-                    $clientContext.ActivateControl($lineTypeControl)
-    
-                    $clientContext.InvokeAction($clientContext.GetActionByName($form, "RunSelected"))
-                    $finishTime = get-date
-                    $duration = $finishTime.Subtract($startTime)
-    
-                    $row = $repeater.CurrentRow
-                    if ($repeater.DefaultViewport[0].Bookmark -eq $row.Bookmark) {
-                        $index = $repeater.Offset+1
-                    }
-    
-                    $result = $clientContext.GetControlByName($row, "Result").StringValue
-                    if ($result -eq "2") {
-                        Write-Host -ForegroundColor Green "Success ($([Math]::Round($duration.TotalSeconds,3)) seconds)"
-                    }
-                    else {
-                        Write-Host -ForegroundColor Red "Failure ($([Math]::Round($duration.TotalSeconds,3)) seconds)"
-                    }
-                }
-                if ($XUnitResultFileName) {
-                    $XUnitAssembly = $XUnitDoc.CreateElement("assembly")
-                    $XUnitAssembly.SetAttribute("name",$Name)
-                    $XUnitAssembly.SetAttribute("test-framework", "PS Test Runner")
-                    $XUnitAssembly.SetAttribute("run-date", $startTime.ToString("yyyy-MM-dd"))
-                    $XUnitAssembly.SetAttribute("run-time", $startTime.ToString("HH:mm:ss"))
-                    $XUnitAssembly.SetAttribute("total",0)
-                    $XUnitAssembly.SetAttribute("passed",0)
-                    $XUnitAssembly.SetAttribute("failed",0)
-                    $XUnitAssembly.SetAttribute("time", "0")
-                    $XUnitCollection = $XUnitDoc.CreateElement("collection")
-                    $XUnitAssembly.AppendChild($XUnitCollection) | Out-Null
-                    $XUnitCollection.SetAttribute("name",$Name)
-                    $XUnitCollection.SetAttribute("total",0)
-                    $XUnitCollection.SetAttribute("passed",0)
-                    $XUnitCollection.SetAttribute("failed",0)
-                    $XUnitCollection.SetAttribute("skipped",0)
-                    $XUnitCollection.SetAttribute("time", "0")
-                }
-            }
-            "2" {
-                if ($testFunction -ne "*") {
-                    if ($LastCodeunitName -ne $codeunitName) {
-                        Write-Host "Codeunit $CodeunitId $CodeunitName"
-                        $LastCodeunitName = $CodeUnitname
-                    }
-                    $clientContext.ActivateControl($lineTypeControl)
-
+        if ($groupName -like $testGroup) {
+            switch ($linetype) {
+                "1" {
                     $startTime = get-date
-                    $clientContext.InvokeAction($clientContext.GetActionByName($form, "RunSelected"))
-                    $finishTime = get-date
-                    $testduration = $finishTime.Subtract($startTime)
-
-                    $row = $repeater.CurrentRow
-                    for ($idx = 0; $idx -lt $repeater.DefaultViewPort.Count; $idx++) {
-                        if ($repeater.DefaultViewPort[$idx].Bookmark -eq $row.Bookmark) {
-                            $index = $repeater.Offset+$idx+1
+                    $totalduration = [Timespan]::Zero
+                    if ($TestFunction -eq "*") {
+                        Write-Host "  Codeunit $codeunitId $name " -NoNewline
+                        $clientContext.ActivateControl($lineTypeControl)
+        
+                        $clientContext.InvokeAction($clientContext.GetActionByName($form, "RunSelected"))
+                        $finishTime = get-date
+                        $duration = $finishTime.Subtract($startTime)
+        
+                        $row = $repeater.CurrentRow
+                        if ($repeater.DefaultViewport[0].Bookmark -eq $row.Bookmark) {
+                            $index = $repeater.Offset+1
+                        }
+        
+                        $result = $clientContext.GetControlByName($row, "Result").StringValue
+                        if ($result -eq "2") {
+                            Write-Host -ForegroundColor Green "Success ($([Math]::Round($duration.TotalSeconds,3)) seconds)"
+                        }
+                        else {
+                            Write-Host -ForegroundColor Red "Failure ($([Math]::Round($duration.TotalSeconds,3)) seconds)"
                         }
                     }
-                }
-                $result = $clientContext.GetControlByName($row, "Result").StringValue
-                $startTime = $clientContext.GetControlByName($row, "Start Time").ObjectValue
-                $finishTime = $clientContext.GetControlByName($row, "Finish Time").ObjectValue
-                $testduration = $finishTime.Subtract($startTime)
-                $totalduration += $testduration
-                if ($XUnitResultFileName) {
-                    if ($XUnitAssembly.ParentNode -eq $null) {
-                        $XUnitAssemblies.AppendChild($XUnitAssembly) | Out-Null
+                    if ($XUnitResultFileName) {
+                        $XUnitAssembly = $XUnitDoc.CreateElement("assembly")
+                        $XUnitAssembly.SetAttribute("name",$Name)
+                        $XUnitAssembly.SetAttribute("test-framework", "PS Test Runner")
+                        $XUnitAssembly.SetAttribute("run-date", $startTime.ToString("yyyy-MM-dd"))
+                        $XUnitAssembly.SetAttribute("run-time", $startTime.ToString("HH:mm:ss"))
+                        $XUnitAssembly.SetAttribute("total",0)
+                        $XUnitAssembly.SetAttribute("passed",0)
+                        $XUnitAssembly.SetAttribute("failed",0)
+                        $XUnitAssembly.SetAttribute("time", "0")
+                        $XUnitCollection = $XUnitDoc.CreateElement("collection")
+                        $XUnitAssembly.AppendChild($XUnitCollection) | Out-Null
+                        $XUnitCollection.SetAttribute("name",$Name)
+                        $XUnitCollection.SetAttribute("total",0)
+                        $XUnitCollection.SetAttribute("passed",0)
+                        $XUnitCollection.SetAttribute("failed",0)
+                        $XUnitCollection.SetAttribute("skipped",0)
+                        $XUnitCollection.SetAttribute("time", "0")
                     }
-                    $XUnitAssembly.SetAttribute("time",([Math]::Round($totalduration.TotalSeconds,3)).ToString([System.Globalization.CultureInfo]::InvariantCulture))
-                    $XUnitAssembly.SetAttribute("total",([int]$XUnitAssembly.GetAttribute("total")+1))
-                    $XUnitTest = $XUnitDoc.CreateElement("test")
-                    $XUnitCollection.AppendChild($XUnitTest) | Out-Null
-                    $XUnitTest.SetAttribute("name", $XUnitAssembly.GetAttribute("name")+':'+$Name)
-                    $XUnitTest.SetAttribute("method", $Name)
-                    $XUnitTest.SetAttribute("time", ([Math]::Round($testduration.TotalSeconds,3)).ToString([System.Globalization.CultureInfo]::InvariantCulture))
                 }
-                if ($result -eq "2") {
-                    if ($detailed) {
-                        Write-Host -ForegroundColor Green "    Testfunction $name Success ($([Math]::Round($testduration.TotalSeconds,3)) seconds)"
+                "2" {
+                    if ($testFunction -ne "*") {
+                        if ($LastCodeunitName -ne $codeunitName) {
+                            Write-Host "Codeunit $CodeunitId $CodeunitName"
+                            $LastCodeunitName = $CodeUnitname
+                        }
+                        $clientContext.ActivateControl($lineTypeControl)
+    
+                        $startTime = get-date
+                        $clientContext.InvokeAction($clientContext.GetActionByName($form, "RunSelected"))
+                        $finishTime = get-date
+                        $testduration = $finishTime.Subtract($startTime)
+    
+                        $row = $repeater.CurrentRow
+                        for ($idx = 0; $idx -lt $repeater.DefaultViewPort.Count; $idx++) {
+                            if ($repeater.DefaultViewPort[$idx].Bookmark -eq $row.Bookmark) {
+                                $index = $repeater.Offset+$idx+1
+                            }
+                        }
+                    }
+                    $result = $clientContext.GetControlByName($row, "Result").StringValue
+                    $startTime = $clientContext.GetControlByName($row, "Start Time").ObjectValue
+                    $finishTime = $clientContext.GetControlByName($row, "Finish Time").ObjectValue
+                    $testduration = $finishTime.Subtract($startTime)
+                    $totalduration += $testduration
+                    if ($XUnitResultFileName) {
+                        if ($XUnitAssembly.ParentNode -eq $null) {
+                            $XUnitAssemblies.AppendChild($XUnitAssembly) | Out-Null
+                        }
+                        $XUnitAssembly.SetAttribute("time",([Math]::Round($totalduration.TotalSeconds,3)).ToString([System.Globalization.CultureInfo]::InvariantCulture))
+                        $XUnitAssembly.SetAttribute("total",([int]$XUnitAssembly.GetAttribute("total")+1))
+                        $XUnitTest = $XUnitDoc.CreateElement("test")
+                        $XUnitCollection.AppendChild($XUnitTest) | Out-Null
+                        $XUnitTest.SetAttribute("name", $XUnitAssembly.GetAttribute("name")+':'+$Name)
+                        $XUnitTest.SetAttribute("method", $Name)
+                        $XUnitTest.SetAttribute("time", ([Math]::Round($testduration.TotalSeconds,3)).ToString([System.Globalization.CultureInfo]::InvariantCulture))
+                    }
+                    if ($result -eq "2") {
+                        if ($detailed) {
+                            Write-Host -ForegroundColor Green "    Testfunction $name Success ($([Math]::Round($testduration.TotalSeconds,3)) seconds)"
+                        }
+                        if ($XUnitResultFileName) {
+                            $XUnitAssembly.SetAttribute("passed",([int]$XUnitAssembly.GetAttribute("passed")+1))
+                            $XUnitTest.SetAttribute("result", "Pass")
+                        }
+                    }
+                    elseif ($result -eq "1") {
+                        $firstError = $clientContext.GetControlByName($row, "First Error").StringValue
+                        if ($AzureDevOps -ne 'no') {
+                            Write-Host "##vso[task.logissue type=$AzureDevOps;sourcepath=$name;]$firstError"
+                        }
+                        Write-Host -ForegroundColor Red "    Testfunction $name Failure ($([Math]::Round($testduration.TotalSeconds,3)) seconds)"
+                        $callStack = $clientContext.GetControlByName($row, "Call Stack").StringValue
+                        if ($callStack.EndsWith("\")) { $callStack = $callStack.Substring(0,$callStack.Length-1) }
+                        if ($XUnitResultFileName) {
+                            $XUnitAssembly.SetAttribute("failed",([int]$XUnitAssembly.GetAttribute("failed")+1))
+                            $XUnitTest.SetAttribute("result", "Fail")
+                            $XUnitFailure = $XUnitDoc.CreateElement("failure")
+                            $XUnitMessage = $XUnitDoc.CreateElement("message")
+                            $XUnitMessage.InnerText = $firstError
+                            $XUnitFailure.AppendChild($XUnitMessage) | Out-Null
+                            $XUnitStacktrace = $XUnitDoc.CreateElement("stack-trace")
+                            $XUnitStacktrace.InnerText = $Callstack.Replace("\","`n")
+                            $XUnitFailure.AppendChild($XUnitStacktrace) | Out-Null
+                            $XUnitTest.AppendChild($XUnitFailure) | Out-Null
+                        }
+                    }
+                    else {
+                        if ($XUnitResultFileName) {
+                            $XUnitCollection.SetAttribute("skipped",([int]$XUnitCollection.GetAttribute("skipped")+1))
+                        }
+                    }
+                    if ($result -eq "1" -and $detailed) {
+                        Write-Host -ForegroundColor Red "      Error:"
+                        Write-Host -ForegroundColor Red "        $firstError"
+                        Write-Host -ForegroundColor Red "      Call Stack:"
+                        Write-Host -ForegroundColor Red "        $($callStack.Replace('\',"`n        "))"
                     }
                     if ($XUnitResultFileName) {
-                        $XUnitAssembly.SetAttribute("passed",([int]$XUnitAssembly.GetAttribute("passed")+1))
-                        $XUnitTest.SetAttribute("result", "Pass")
-                    }
-                }
-                elseif ($result -eq "1") {
-                    $firstError = $clientContext.GetControlByName($row, "First Error").StringValue
-                    if ($AzureDevOps -ne 'no') {
-                        Write-Host "##vso[task.logissue type=$AzureDevOps;sourcepath=$name;]$firstError"
-                    }
-                    Write-Host -ForegroundColor Red "    Testfunction $name Failure ($([Math]::Round($testduration.TotalSeconds,3)) seconds)"
-                    $callStack = $clientContext.GetControlByName($row, "Call Stack").StringValue
-                    if ($callStack.EndsWith("\")) { $callStack = $callStack.Substring(0,$callStack.Length-1) }
-                    if ($XUnitResultFileName) {
-                        $XUnitAssembly.SetAttribute("failed",([int]$XUnitAssembly.GetAttribute("failed")+1))
-                        $XUnitTest.SetAttribute("result", "Fail")
-                        $XUnitFailure = $XUnitDoc.CreateElement("failure")
-                        $XUnitMessage = $XUnitDoc.CreateElement("message")
-                        $XUnitMessage.InnerText = $firstError
-                        $XUnitFailure.AppendChild($XUnitMessage) | Out-Null
-                        $XUnitStacktrace = $XUnitDoc.CreateElement("stack-trace")
-                        $XUnitStacktrace.InnerText = $Callstack.Replace("\","`n")
-                        $XUnitFailure.AppendChild($XUnitStacktrace) | Out-Null
-                        $XUnitTest.AppendChild($XUnitFailure) | Out-Null
+                        $XUnitCollection.SetAttribute("time", $XUnitAssembly.GetAttribute("time"))
+                        $XUnitCollection.SetAttribute("total", $XUnitAssembly.GetAttribute("total"))
+                        $XUnitCollection.SetAttribute("passed", $XUnitAssembly.GetAttribute("passed"))
+                        $XUnitCollection.SetAttribute("failed", $XUnitAssembly.GetAttribute("failed"))
                     }
                 }
                 else {
-                    if ($XUnitResultFileName) {
-                        $XUnitCollection.SetAttribute("skipped",([int]$XUnitCollection.GetAttribute("skipped")+1))
-                    }
                 }
-                if ($result -eq "1" -and $detailed) {
-                    Write-Host -ForegroundColor Red "      Error:"
-                    Write-Host -ForegroundColor Red "        $firstError"
-                    Write-Host -ForegroundColor Red "      Call Stack:"
-                    Write-Host -ForegroundColor Red "        $($callStack.Replace('\',"`n        "))"
-                }
-                if ($XUnitResultFileName) {
-                    $XUnitCollection.SetAttribute("time", $XUnitAssembly.GetAttribute("time"))
-                    $XUnitCollection.SetAttribute("total", $XUnitAssembly.GetAttribute("total"))
-                    $XUnitCollection.SetAttribute("passed", $XUnitAssembly.GetAttribute("passed"))
-                    $XUnitCollection.SetAttribute("failed", $XUnitAssembly.GetAttribute("failed"))
-                }
-            }
-            else {
-                Write-Host "Group $name" 
             }
         }
     }
