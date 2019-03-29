@@ -6,6 +6,8 @@ Add-type -Path "C:\Users\freddyk\Documents\GitHub\NAVDEMO\RunTests\Test Assembli
 $clientcontext = [ClientContext]::new("http://fkx/NAV/cs", $credential, ([timespan]::FromMinutes(10)), "en-US")
 
 $form = $clientcontext.OpenForm(130409)
+$clientcontext.GetErrorFromErrorForm()
+
 $clientcontext.GetFormInfo($form[0])
 
 $windowsusername = "user manager\containeradministrator"
