@@ -66,6 +66,10 @@ class ClientContext {
                 $errorControl = $form.ContainedControls | Where-Object { $_ -is [ClientStaticStringControl] } | Select-Object -First 1                
                 Write-Host -ForegroundColor Red "ERROR: $($errorControl.StringValue)"
             }
+            if ( $form.ControlIdentifier -eq "00000000-0000-0000-0300-0000836bd2d2" ) {
+                $errorControl = $form.ContainedControls | Where-Object { $_ -is [ClientStaticStringControl] } | Select-Object -First 1                
+                Write-Host -ForegroundColor Yellow "WARNING: $($errorControl.StringValue)"
+            }
         })
     
         $this.clientSession.OpenSessionAsync($clientSessionParameters)
@@ -109,9 +113,14 @@ class ClientContext {
     
     [ClientLogicalForm] InvokeInteractionAndCatchForm([ClientInteraction] $interaction) {
         $Global:PsTestRunnerCaughtForm = $null
-        $formToShowEvent = Register-ObjectEvent -InputObject $this.clientSession -EventName FormToShow -Action { $Global:PsTestRunnerCaughtForm = $EventArgs.FormToShow }
+        $formToShowEvent = Register-ObjectEvent -InputObject $this.clientSession -EventName FormToShow -Action { 
+            $Global:PsTestRunnerCaughtForm = $EventArgs.FormToShow
+        }
         try {
             $this.InvokeInteraction($interaction)
+            if (!($Global:PsTestRunnerCaughtForm)) {
+                $this.CloseAllWarningForms()
+            }
         } finally {
             Unregister-Event -SourceIdentifier $formToShowEvent.Name
         }
@@ -149,6 +158,19 @@ class ClientContext {
         return $errorText
     }
     
+    [string]GetWarningFromWarningForm() {
+        $warningText = ""
+        $this.clientSession.OpenedForms.GetEnumerator() | % {
+            $form = $_
+            if ( $form.ControlIdentifier -eq "00000000-0000-0000-0300-0000836bd2d2" ) {
+                $form.ContainedControls | Where-Object { $_ -is [ClientStaticStringControl] } | % {
+                    $warningText = $_.StringValue
+                }
+            }
+        }
+        return $warningText
+    }
+
     [Hashtable]GetFormInfo([ClientLogicalForm] $form) {
     
         function Dump-RowControl {
@@ -224,7 +246,23 @@ class ClientContext {
     }
     
     CloseAllForms() {
-        $this.GetAllForms | % { $this.CloseForm($_) }
+        $this.GetAllForms() | % { $this.CloseForm($_) }
+    }
+
+    CloseAllErrorForms() {
+        $this.GetAllForms() | % {
+            if ($_.ControlIdentifier -eq "00000000-0000-0000-0800-0000836bd2d2") {
+                $this.CloseForm($_)
+            }
+        }
+    }
+
+    CloseAllWarningForms() {
+        $this.GetAllForms() | % {
+            if ($_.ControlIdentifier -eq "00000000-0000-0000-0300-0000836bd2d2") {
+                $this.CloseForm($_)
+            }
+        }
     }
     
     [ClientLogicalControl]GetControlByCaption([ClientLogicalControl] $control, [string] $caption) {
